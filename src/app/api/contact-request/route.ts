@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     }
 
     const { error } = await resend.emails.send({
-      from: "Appointly <onboarding@resend.dev>",
+      from: "Appointly <hello@appointly.vip>",
       to: [receiverEmail],
       subject: `New Appointly request from ${name}`,
       replyTo: email,
