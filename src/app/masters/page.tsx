@@ -9,6 +9,16 @@ import { masters } from "@/data/masters";
 
 const allMasters = Object.values(masters);
 
+const categoryLabels: Record<string, string> = {
+  manicure: "Manicure",
+  pedicure: "Pedicure",
+  lashes: "Lashes",
+  brows: "Brows",
+  massage: "Massage",
+  haircut: "Haircut",
+  "hair coloring": "Hair coloring",
+};
+
 const allCategories = Array.from(
   new Set(allMasters.flatMap((master) => master.publicCategories))
 ).sort();
@@ -17,14 +27,20 @@ const allCities = Array.from(
   new Set(allMasters.map((master) => master.city).filter(Boolean))
 ).sort() as string[];
 
-const allNeighborhoods = Array.from(
-  new Set(allMasters.map((master) => master.neighborhood).filter(Boolean))
-).sort() as string[];
-
 export default function MastersPage() {
   const [category, setCategory] = useState("");
   const [city, setCity] = useState("");
   const [neighborhood, setNeighborhood] = useState("");
+
+  const availableNeighborhoods = useMemo(() => {
+    const filteredByCity = city
+      ? allMasters.filter((master) => master.city === city)
+      : allMasters;
+
+    return Array.from(
+      new Set(filteredByCity.map((master) => master.neighborhood).filter(Boolean))
+    ).sort() as string[];
+  }, [city]);
 
   const filteredMasters = useMemo(() => {
     return allMasters.filter((master) => {
@@ -39,6 +55,12 @@ export default function MastersPage() {
       return matchesCategory && matchesCity && matchesNeighborhood;
     });
   }, [category, city, neighborhood]);
+
+  function resetFilters() {
+    setCategory("");
+    setCity("");
+    setNeighborhood("");
+  }
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -56,70 +78,82 @@ export default function MastersPage() {
             </p>
           </div>
 
-          <div className="mt-10 grid gap-4 rounded-3xl border border-neutral-200 p-6 md:grid-cols-3">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-neutral-800">
-                Service category
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-              >
-                <option value="">All services</option>
-                {allCategories.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
+          <div className="mt-10 rounded-3xl border border-neutral-200 p-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-neutral-800">
+                  Service category
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+                >
+                  <option value="">All services</option>
+                  {allCategories.map((item) => (
+                    <option key={item} value={item}>
+                      {categoryLabels[item] ?? item}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-neutral-800">
+                  City
+                </label>
+                <select
+                  value={city}
+                  onChange={(e) => {
+                    setCity(e.target.value);
+                    setNeighborhood("");
+                  }}
+                  className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+                >
+                  <option value="">All cities</option>
+                  {allCities.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-neutral-800">
+                  Neighborhood
+                </label>
+                <select
+                  value={neighborhood}
+                  onChange={(e) => setNeighborhood(e.target.value)}
+                  className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+                >
+                  <option value="">All neighborhoods</option>
+                  {availableNeighborhoods.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-neutral-800">
-                City
-              </label>
-              <select
-                value={city}
-                onChange={(e) => {
-                  setCity(e.target.value);
-                  setNeighborhood("");
-                }}
-                className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-              >
-                <option value="">All cities</option>
-                {allCities.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="text-sm text-neutral-600">
+                Found:{" "}
+                <span className="font-semibold text-neutral-900">
+                  {filteredMasters.length}
+                </span>
+              </div>
 
-            <div>
-              <label className="mb-2 block text-sm font-medium text-neutral-800">
-                Neighborhood
-              </label>
-              <select
-                value={neighborhood}
-                onChange={(e) => setNeighborhood(e.target.value)}
-                className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-100"
               >
-                <option value="">All neighborhoods</option>
-                {allNeighborhoods.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
+                Reset filters
+              </button>
             </div>
-          </div>
-
-          <div className="mt-6 text-sm text-neutral-600">
-            Found:{" "}
-            <span className="font-semibold text-neutral-900">
-              {filteredMasters.length}
-            </span>
           </div>
 
           <div className="mt-8 grid gap-6 md:grid-cols-2">
@@ -156,7 +190,7 @@ export default function MastersPage() {
                           key={item}
                           className="rounded-full border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700"
                         >
-                          {item}
+                          {categoryLabels[item] ?? item}
                         </span>
                       ))}
                     </div>
