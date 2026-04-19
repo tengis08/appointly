@@ -2,6 +2,7 @@ import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { ContactButtons } from "@/components/contact-buttons";
 import { MasterAvatar } from "@/components/master-avatar";
+import { BookingForm } from "@/components/booking-form";
 import { masters } from "@/data/masters";
 import { notFound } from "next/navigation";
 
@@ -94,102 +95,7 @@ export default async function MasterPage({ params }: MasterPageProps) {
             </div>
 
             <div>
-              <div className="rounded-3xl border border-neutral-200 p-6">
-                <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">
-                  Book an appointment
-                </h2>
-
-                <p className="mt-3 text-sm leading-6 text-neutral-600">
-                  This is a temporary booking form preview. Next step we will add
-                  real calendar logic, available slots, and saving bookings.
-                </p>
-
-                <form className="mt-8 space-y-5">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-neutral-800">
-                      Service
-                    </label>
-                    <select className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500">
-                      {master.services.map((service) => (
-                        <option key={service.id} value={service.name}>
-                          {service.name} — {service.price}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-neutral-800">
-                      Preferred date
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-neutral-800">
-                      Preferred time
-                    </label>
-                    <input
-                      type="time"
-                      className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-neutral-800">
-                      Your name
-                    </label>
-                    <input
-                      type="text"
-                      className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                      placeholder="Your name"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-neutral-800">
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                      placeholder="+1 (___) ___-____"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-neutral-800">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                      placeholder="your@email.com"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-neutral-800">
-                      Confirm email
-                    </label>
-                    <input
-                      type="email"
-                      className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                      placeholder="Repeat your email"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
-                  >
-                    Request booking
-                  </button>
-                </form>
-              </div>
+              <BookingForm masterSlug={master.slug} services={master.services} />
             </div>
           </div>
         </section>

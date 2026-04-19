@@ -3,6 +3,7 @@ export type Service = {
   name: string;
   price: string;
   duration: string;
+  category: string;
 };
 
 export type MasterProfile = {
@@ -12,6 +13,9 @@ export type MasterProfile = {
   phone?: string | null;
   whatsapp?: string | null;
   address?: string | null;
+  city?: string | null;
+  neighborhood?: string | null;
   photoUrl?: string | null;
+  publicCategories: string[];
   services: Service[];
 };
