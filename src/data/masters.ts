@@ -1,5 +1,31 @@
 import type { MasterProfile } from "@/types/master";
 
+const mondayToSaturday: MasterProfile["workingDays"] = [
+  { dayOfWeek: 1, start: "10:00", end: "18:00" },
+  { dayOfWeek: 2, start: "10:00", end: "18:00" },
+  { dayOfWeek: 3, start: "10:00", end: "18:00" },
+  { dayOfWeek: 4, start: "10:00", end: "18:00" },
+  { dayOfWeek: 5, start: "10:00", end: "18:00" },
+  { dayOfWeek: 6, start: "10:00", end: "18:00" },
+];
+
+const mondayToFriday: MasterProfile["workingDays"] = [
+  { dayOfWeek: 1, start: "10:00", end: "18:00" },
+  { dayOfWeek: 2, start: "10:00", end: "18:00" },
+  { dayOfWeek: 3, start: "10:00", end: "18:00" },
+  { dayOfWeek: 4, start: "10:00", end: "18:00" },
+  { dayOfWeek: 5, start: "10:00", end: "18:00" },
+];
+
+const tuesdayToSunday: MasterProfile["workingDays"] = [
+  { dayOfWeek: 0, start: "11:00", end: "19:00" },
+  { dayOfWeek: 2, start: "11:00", end: "19:00" },
+  { dayOfWeek: 3, start: "11:00", end: "19:00" },
+  { dayOfWeek: 4, start: "11:00", end: "19:00" },
+  { dayOfWeek: 5, start: "11:00", end: "19:00" },
+  { dayOfWeek: 6, start: "11:00", end: "19:00" },
+];
+
 export const masters: Record<string, MasterProfile> = {
   anna: {
     slug: "anna",
@@ -12,7 +38,10 @@ export const masters: Record<string, MasterProfile> = {
     city: "Brooklyn",
     neighborhood: "Brighton Beach",
     photoUrl: null,
+    bookingEmail: "appointly@yahoo.com",
     publicCategories: ["manicure", "pedicure"],
+    slotStepMinutes: 30,
+    workingDays: mondayToSaturday,
     services: [
       {
         id: 1,
@@ -49,7 +78,10 @@ export const masters: Record<string, MasterProfile> = {
     city: "Queens",
     neighborhood: "Astoria",
     photoUrl: null,
+    bookingEmail: "appointly@yahoo.com",
     publicCategories: ["haircut", "hair coloring"],
+    slotStepMinutes: 30,
+    workingDays: mondayToSaturday,
     services: [
       {
         id: 1,
@@ -86,7 +118,10 @@ export const masters: Record<string, MasterProfile> = {
     city: "Brooklyn",
     neighborhood: "Sheepshead Bay",
     photoUrl: null,
+    bookingEmail: "appointly@yahoo.com",
     publicCategories: ["lashes"],
+    slotStepMinutes: 30,
+    workingDays: tuesdayToSunday,
     services: [
       {
         id: 1,
@@ -116,7 +151,10 @@ export const masters: Record<string, MasterProfile> = {
     city: "Manhattan",
     neighborhood: "SoHo",
     photoUrl: null,
+    bookingEmail: "appointly@yahoo.com",
     publicCategories: ["massage"],
+    slotStepMinutes: 30,
+    workingDays: mondayToFriday,
     services: [
       {
         id: 1,
@@ -146,7 +184,10 @@ export const masters: Record<string, MasterProfile> = {
     city: "Brooklyn",
     neighborhood: "Midwood",
     photoUrl: null,
+    bookingEmail: "appointly@yahoo.com",
     publicCategories: ["manicure", "pedicure"],
+    slotStepMinutes: 30,
+    workingDays: mondayToSaturday,
     services: [
       {
         id: 1,
@@ -176,7 +217,10 @@ export const masters: Record<string, MasterProfile> = {
     city: "Manhattan",
     neighborhood: "Chinatown",
     photoUrl: null,
+    bookingEmail: "appointly@yahoo.com",
     publicCategories: ["lashes", "brows"],
+    slotStepMinutes: 30,
+    workingDays: tuesdayToSunday,
     services: [
       {
         id: 1,
@@ -206,7 +250,10 @@ export const masters: Record<string, MasterProfile> = {
     city: "Brooklyn",
     neighborhood: "Bensonhurst",
     photoUrl: null,
+    bookingEmail: "appointly@yahoo.com",
     publicCategories: ["haircut"],
+    slotStepMinutes: 30,
+    workingDays: mondayToSaturday,
     services: [
       {
         id: 1,
@@ -236,7 +283,10 @@ export const masters: Record<string, MasterProfile> = {
     city: "Brooklyn",
     neighborhood: "Gravesend",
     photoUrl: null,
+    bookingEmail: "appointly@yahoo.com",
     publicCategories: ["pedicure", "manicure"],
+    slotStepMinutes: 30,
+    workingDays: mondayToSaturday,
     services: [
       {
         id: 1,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { useEffect, useMemo, useState } from "react";
+import { formatTimeLabel, getTodayDateString } from "@/lib/booking";
 import type { Service } from "@/types/master";
 
 type BookingFormProps = {
@@ -17,8 +17,59 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [errorText, setErrorText] = useState("");
+
+  const minDate = useMemo(() => getTodayDateString(), []);
+
+  useEffect(() => {
+    setAppointmentTime("");
+    setAvailableSlots([]);
+
+    if (!appointmentDate || !serviceName) {
+      return;
+    }
+
+    let isActive = true;
+
+    async function loadSlots() {
+      try {
+        setSlotsLoading(true);
+
+        const params = new URLSearchParams({
+          masterSlug,
+          date: appointmentDate,
+          serviceName,
+        });
+
+        const response = await fetch(`/api/available-slots?${params.toString()}`);
+        const data = await response.json().catch(() => null);
+
+        if (!isActive) {
+          return;
+        }
+
+        if (!response.ok) {
+          setAvailableSlots([]);
+          return;
+        }
+
+        setAvailableSlots(data?.slots ?? []);
+      } finally {
+        if (isActive) {
+          setSlotsLoading(false);
+        }
+      }
+    }
+
+    loadSlots();
+
+    return () => {
+      isActive = false;
+    };
+  }, [appointmentDate, serviceName, masterSlug]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -31,21 +82,33 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
       return;
     }
 
-    const { error } = await supabase.from("appointments").insert([
-      {
-        master_slug: masterSlug,
-        service_name: serviceName,
-        appointment_date: appointmentDate,
-        appointment_time: appointmentTime,
-        client_name: clientName,
-        client_phone: clientPhone,
-        client_email: clientEmail,
-      },
-    ]);
-
-    if (error) {
+    if (!appointmentTime) {
       setStatus("error");
-      setErrorText(error.message);
+      setErrorText("Please select an available time slot.");
+      return;
+    }
+
+    const response = await fetch("/api/book-appointment", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        masterSlug,
+        serviceName,
+        appointmentDate,
+        appointmentTime,
+        clientName,
+        clientPhone,
+        clientEmail,
+      }),
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      setStatus("error");
+      setErrorText(data?.error || "Booking request failed.");
       return;
     }
 
@@ -56,11 +119,20 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
     setClientPhone("");
     setClientEmail("");
     setConfirmEmail("");
+    setAvailableSlots([]);
 
     if (services[0]?.name) {
       setServiceName(services[0].name);
     }
   }
+
+  const slotsPlaceholder = !appointmentDate
+    ? "Select a date first"
+    : slotsLoading
+      ? "Loading available slots..."
+      : availableSlots.length === 0
+        ? "No available slots"
+        : "Select a time slot";
 
   return (
     <div className="rounded-3xl border border-neutral-200 p-6">
@@ -97,6 +169,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           <input
             type="date"
             required
+            min={minDate}
             value={appointmentDate}
             onChange={(e) => setAppointmentDate(e.target.value)}
             className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
@@ -105,15 +178,28 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
 
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-800">
-            Preferred time
+            Available time slots
           </label>
-          <input
-            type="time"
+          <select
             required
             value={appointmentTime}
             onChange={(e) => setAppointmentTime(e.target.value)}
-            className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-          />
+            disabled={!appointmentDate || slotsLoading || availableSlots.length === 0}
+            className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500 disabled:cursor-not-allowed disabled:bg-neutral-100"
+          >
+            <option value="">{slotsPlaceholder}</option>
+            {availableSlots.map((slot) => (
+              <option key={slot} value={slot}>
+                {formatTimeLabel(slot)}
+              </option>
+            ))}
+          </select>
+
+          {appointmentDate && !slotsLoading && availableSlots.length === 0 && (
+            <p className="mt-2 text-sm text-neutral-500">
+              No free slots are available for this date.
+            </p>
+          )}
         </div>
 
         <div>

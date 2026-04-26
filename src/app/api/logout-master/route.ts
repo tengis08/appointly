@@ -1,0 +1,18 @@
+import { NextResponse } from "next/server";
+
+export async function POST(request: Request) {
+  const url = new URL(request.url);
+  const response = NextResponse.redirect(new URL("/login", url.origin), {
+    status: 303,
+  });
+
+  response.cookies.set("appointly_access_token", "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 0,
+  });
+
+  return response;
+}

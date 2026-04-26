@@ -4,7 +4,10 @@ import { ContactButtons } from "@/components/contact-buttons";
 import { MasterAvatar } from "@/components/master-avatar";
 import { BookingForm } from "@/components/booking-form";
 import { masters } from "@/data/masters";
+import { getMasterFromDb } from "@/lib/masters-db";
 import { notFound } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 
 type MasterPageProps = {
   params: Promise<{ slug: string }>;
@@ -12,7 +15,11 @@ type MasterPageProps = {
 
 export default async function MasterPage({ params }: MasterPageProps) {
   const { slug } = await params;
-  const master = masters[slug];
+
+  const dbMaster = await getMasterFromDb(slug);
+  const fallbackMaster = masters[slug];
+
+  const master = dbMaster || fallbackMaster;
 
   if (!master) {
     notFound();
@@ -43,15 +50,37 @@ export default async function MasterPage({ params }: MasterPageProps) {
                   <div className="mt-5 space-y-2 text-sm text-neutral-700">
                     {master.address && (
                       <p>
-                        <span className="font-medium text-neutral-900">Address:</span>{" "}
+                        <span className="font-medium text-neutral-900">
+                          Address:
+                        </span>{" "}
                         {master.address}
                       </p>
                     )}
 
                     {master.phone && (
                       <p>
-                        <span className="font-medium text-neutral-900">Phone:</span>{" "}
+                        <span className="font-medium text-neutral-900">
+                          Phone:
+                        </span>{" "}
                         {master.phone}
+                      </p>
+                    )}
+
+                    {master.city && (
+                      <p>
+                        <span className="font-medium text-neutral-900">
+                          City:
+                        </span>{" "}
+                        {master.city}
+                      </p>
+                    )}
+
+                    {master.neighborhood && (
+                      <p>
+                        <span className="font-medium text-neutral-900">
+                          Neighborhood:
+                        </span>{" "}
+                        {master.neighborhood}
                       </p>
                     )}
                   </div>
