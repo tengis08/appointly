@@ -1,15 +1,11 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 
 export default function LoginPage() {
-  const searchParams = useSearchParams();
-  const nextUrl = searchParams.get("next");
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -39,10 +35,10 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = nextUrl || data.dashboardUrl || "/masters";
-    } catch (error) {
+      window.location.href = data.dashboardUrl || "/masters";
+    } catch {
       setStatus("error");
-      setErrorText("Login request failed. Check local server terminal.");
+      setErrorText("Login request failed. Check server logs.");
     }
   }
 
