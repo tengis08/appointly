@@ -57,7 +57,8 @@ export default async function MasterDashboardPage({
   let query = supabaseAdmin
     .from("appointments")
     .select("*")
-    .eq("master_slug", slug);
+    .eq("master_slug", slug)
+    .eq("status", "active");
 
   if (date) {
     query = query.eq("appointment_date", date);
@@ -82,7 +83,7 @@ export default async function MasterDashboardPage({
       <main className="flex-1 max-w-6xl mx-auto px-6 py-14 w-full">
         <p className="text-sm text-neutral-500 mb-2">Master dashboard</p>
         <h1 className="text-5xl font-semibold mb-4">{master.name}</h1>
-        <p className="text-neutral-600 mb-10">View your booking requests.</p>
+        <p className="text-neutral-600 mb-10">View your active booking requests.</p>
 
         <div className="border border-neutral-200 rounded-3xl p-6 mb-8">
           <form className="grid md:grid-cols-4 gap-4 items-end">
@@ -121,10 +122,7 @@ export default async function MasterDashboardPage({
           </form>
 
           <div className="flex flex-wrap gap-3 mt-6">
-            <Link
-              href={`/${slug}`}
-              className="border px-5 py-3 rounded-2xl"
-            >
+            <Link href={`/${slug}`} className="border px-5 py-3 rounded-2xl">
               Open public page
             </Link>
 
@@ -149,23 +147,20 @@ export default async function MasterDashboardPage({
               Availability
             </Link>
 
-            <a
-              href="/api/logout-master"
-              className="border px-5 py-3 rounded-2xl"
-            >
-              Logout
-            </a>
+            <form action="/api/logout-master" method="POST">
+              <button className="border px-5 py-3 rounded-2xl">Logout</button>
+            </form>
           </div>
 
           <p className="text-sm text-neutral-500 mt-6">
-            Total records: {appointments?.length || 0}
+            Active records: {appointments?.length || 0}
           </p>
         </div>
 
         {!appointments || appointments.length === 0 ? (
           <div className="border border-neutral-200 rounded-3xl p-14 text-center text-neutral-500">
-            <h2 className="text-3xl text-black mb-3">No appointments found</h2>
-            <p>New booking requests for {master.name} will appear here.</p>
+            <h2 className="text-3xl text-black mb-3">No active appointments found</h2>
+            <p>New active booking requests for {master.name} will appear here.</p>
           </div>
         ) : (
           <div className="border border-neutral-200 rounded-3xl overflow-hidden">

@@ -12,17 +12,27 @@ export async function POST(request: Request) {
     );
   }
 
-  const { error } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from("appointments")
     .update({ status: "cancelled" })
     .eq("cancel_token", token)
-    .eq("status", "active");
+    .eq("status", "active")
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.redirect(new URL(`/cancel/${token}?cancelled=1`, request.url), {
-    status: 303,
-  });
+  if (!data) {
+    return NextResponse.redirect(
+      new URL(`/cancel/${token}?cancelled=1`, request.url),
+      { status: 303 }
+    );
+  }
+
+  return NextResponse.redirect(
+    new URL(`/cancel/${token}?cancelled=1`, request.url),
+    { status: 303 }
+  );
 }
