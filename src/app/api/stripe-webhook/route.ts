@@ -23,7 +23,6 @@ async function activateSubscriptionFromCheckoutSession(
   session: Stripe.Checkout.Session
 ) {
   const masterSlug = session.metadata?.master_slug;
-  const planFromMetadata = session.metadata?.plan;
 
   const customerId =
     typeof session.customer === "string"
@@ -44,20 +43,25 @@ async function activateSubscriptionFromCheckoutSession(
     return;
   }
 
-  const plan =
-    planFromMetadata === "premium"
-      ? "premium"
-      : planFromMetadata === "basic"
-        ? "basic"
-        : "free";
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+
+  const priceId = subscription.items.data[0]?.price.id;
+  const plan = getPlanFromPriceId(priceId);
+
+  const currentPeriodEnd = subscription.items.data[0]?.current_period_end
+    ? new Date(
+        subscription.items.data[0].current_period_end * 1000
+      ).toISOString()
+    : null;
 
   const { error } = await supabaseAdmin
     .from("master_accounts")
     .update({
-      plan_type: plan,
-      subscription_status: "active",
+      plan_type: subscription.status === "active" ? plan : "free",
+      subscription_status: subscription.status,
       stripe_customer_id: customerId,
       stripe_subscription_id: subscriptionId,
+      stripe_current_period_end: currentPeriodEnd,
     })
     .eq("master_slug", masterSlug);
 
@@ -75,16 +79,12 @@ async function updateSubscription(subscription: Stripe.Subscription) {
       : subscription.customer.id;
 
   const priceId = subscription.items.data[0]?.price.id;
-  const planFromPrice = getPlanFromPriceId(priceId);
 
-  const planFromMetadata =
-    subscription.metadata?.plan === "premium"
-      ? "premium"
-      : subscription.metadata?.plan === "basic"
-        ? "basic"
-        : planFromPrice;
-
-  const masterSlug = subscription.metadata?.master_slug;
+  // IMPORTANT:
+  // The current plan must come from the current Stripe price ID.
+  // Do not trust old subscription metadata here, because metadata can stay "basic"
+  // even after the customer upgrades to Premium in Stripe Customer Portal.
+  const currentPlan = getPlanFromPriceId(priceId);
 
   const currentPeriodEnd = subscription.items.data[0]?.current_period_end
     ? new Date(
@@ -92,21 +92,16 @@ async function updateSubscription(subscription: Stripe.Subscription) {
       ).toISOString()
     : null;
 
-  let query = supabaseAdmin.from("master_accounts").update({
-    plan_type: subscription.status === "active" ? planFromMetadata : "free",
-    subscription_status: subscription.status,
-    stripe_customer_id: customerId,
-    stripe_subscription_id: subscriptionId,
-    stripe_current_period_end: currentPeriodEnd,
-  });
-
-  if (masterSlug) {
-    query = query.eq("master_slug", masterSlug);
-  } else {
-    query = query.eq("stripe_subscription_id", subscriptionId);
-  }
-
-  const { error } = await query;
+  const { error } = await supabaseAdmin
+    .from("master_accounts")
+    .update({
+      plan_type: subscription.status === "active" ? currentPlan : "free",
+      subscription_status: subscription.status,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscriptionId,
+      stripe_current_period_end: currentPeriodEnd,
+    })
+    .eq("stripe_subscription_id", subscriptionId);
 
   if (error) {
     throw error;
