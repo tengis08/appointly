@@ -1,41 +1,41 @@
-"use client";
-
 import Link from "next/link";
-import { LanguageSwitcher } from "./language-switcher";
-import { useLocale } from "./locale-provider";
 
 export function Header() {
-  const { t } = useLocale();
-
   return (
     <header className="border-b border-neutral-200 bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-6">
-          <Link
-            href="/"
-            className="text-xl font-bold tracking-tight text-neutral-900"
-          >
-            {t.brand}
+        <div className="flex items-center gap-8">
+          <Link href="/" className="text-xl font-bold tracking-tight">
+            Appointly
           </Link>
 
-          <Link
-            href="/masters"
-            className="hidden text-sm font-medium text-neutral-700 transition hover:text-neutral-900 md:inline-flex"
-          >
-            Masters
-          </Link>
+          <nav className="hidden items-center gap-6 text-sm md:flex">
+            <Link href="/masters" className="text-neutral-700 hover:text-black">
+              Masters
+            </Link>
+          </nav>
         </div>
 
         <div className="flex items-center gap-3">
-          <LanguageSwitcher />
+          <select className="rounded-full border border-neutral-300 bg-white px-4 py-2 text-sm">
+            <option>English</option>
+            <option>Español</option>
+            <option>Русский</option>
+          </select>
 
-          <button className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-100">
-            {t.login}
-          </button>
+          <Link
+            href="/login"
+            className="rounded-full border border-neutral-300 px-5 py-2 text-sm font-medium text-neutral-900 transition hover:bg-neutral-100"
+          >
+            Log in
+          </Link>
 
-          <button className="rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-neutral-800">
-            {t.getStarted}
-          </button>
+          <Link
+            href="/signup"
+            className="rounded-full bg-neutral-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-neutral-800"
+          >
+            Get started
+          </Link>
         </div>
       </div>
     </header>
