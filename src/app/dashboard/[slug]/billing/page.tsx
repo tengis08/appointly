@@ -16,6 +16,22 @@ type BillingPageProps = {
   }>;
 };
 
+function formatPlanName(plan: string | null | undefined) {
+  if (plan === "premium") return "Premium";
+  if (plan === "basic") return "Basic";
+  return "Free";
+}
+
+function formatStatus(status: string | null | undefined) {
+  if (status === "active") return "Active";
+  if (status === "trialing") return "Trialing";
+  if (status === "past_due") return "Past due";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "canceled") return "Canceled";
+  if (status === "inactive") return "Inactive";
+  return "Inactive";
+}
+
 export default async function BillingPage({
   params,
   searchParams,
@@ -34,6 +50,18 @@ export default async function BillingPage({
   if (!master) {
     notFound();
   }
+
+  const { data: account } = await supabaseAdmin
+    .from("master_accounts")
+    .select(
+      "plan_type, subscription_status, stripe_customer_id, stripe_subscription_id, stripe_current_period_end"
+    )
+    .eq("master_slug", slug)
+    .single();
+
+  const currentPlan = account?.plan_type || "free";
+  const subscriptionStatus = account?.subscription_status || "inactive";
+  const hasStripeCustomer = Boolean(account?.stripe_customer_id);
 
   const success = queryParams.success === "1";
   const cancelled = queryParams.cancelled === "1";
@@ -55,7 +83,7 @@ export default async function BillingPage({
               </h1>
 
               <p className="mt-4 text-neutral-600">
-                Choose a monthly subscription plan for {master.name}.
+                Manage the monthly subscription plan for {master.name}.
               </p>
             </div>
 
@@ -69,7 +97,8 @@ export default async function BillingPage({
 
           {success && (
             <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-700">
-              Stripe checkout completed. Plan activation will be connected in the next step.
+              Stripe checkout completed. Your subscription status is shown
+              below.
             </div>
           )}
 
@@ -78,6 +107,53 @@ export default async function BillingPage({
               Checkout was cancelled. No payment was completed.
             </div>
           )}
+
+          <div className="mt-8 rounded-3xl border border-neutral-200 bg-neutral-50 p-6">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-2xl font-semibold text-neutral-900">
+                  Current subscription
+                </h2>
+
+                <p className="mt-2 text-sm text-neutral-600">
+                  View your current plan and manage your billing settings.
+                </p>
+              </div>
+
+              {hasStripeCustomer && (
+                <form action="/api/create-customer-portal-session" method="POST">
+                  <button className="rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">
+                    Manage subscription
+                  </button>
+                </form>
+              )}
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl bg-white p-5">
+                <p className="text-sm text-neutral-500">Current plan</p>
+                <p className="mt-2 text-3xl font-bold text-neutral-900">
+                  {formatPlanName(currentPlan)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-white p-5">
+                <p className="text-sm text-neutral-500">Subscription status</p>
+                <p className="mt-2 text-3xl font-bold text-neutral-900">
+                  {formatStatus(subscriptionStatus)}
+                </p>
+              </div>
+            </div>
+
+            {account?.stripe_current_period_end && (
+              <p className="mt-4 text-sm text-neutral-600">
+                Current period ends:{" "}
+                {new Date(
+                  account.stripe_current_period_end
+                ).toLocaleDateString("en-US")}
+              </p>
+            )}
+          </div>
 
           <div className="mt-8 grid gap-6 md:grid-cols-2">
             <div className="rounded-3xl border border-neutral-200 p-6">
@@ -105,17 +181,23 @@ export default async function BillingPage({
                 <li>Client cancellation link</li>
               </ul>
 
-              <form
-                action="/api/create-checkout-session"
-                method="POST"
-                className="mt-8"
-              >
-                <input type="hidden" name="plan" value="basic" />
+              {currentPlan === "basic" && subscriptionStatus === "active" ? (
+                <div className="mt-8 rounded-full border border-green-300 bg-green-50 px-6 py-3 text-center text-sm font-semibold text-green-700">
+                  Current plan
+                </div>
+              ) : (
+                <form
+                  action="/api/create-checkout-session"
+                  method="POST"
+                  className="mt-8"
+                >
+                  <input type="hidden" name="plan" value="basic" />
 
-                <button className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">
-                  Choose Basic
-                </button>
-              </form>
+                  <button className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">
+                    Choose Basic
+                  </button>
+                </form>
+              )}
             </div>
 
             <div className="rounded-3xl border border-neutral-900 p-6">
@@ -142,17 +224,23 @@ export default async function BillingPage({
                 <li>Premium support</li>
               </ul>
 
-              <form
-                action="/api/create-checkout-session"
-                method="POST"
-                className="mt-8"
-              >
-                <input type="hidden" name="plan" value="premium" />
+              {currentPlan === "premium" && subscriptionStatus === "active" ? (
+                <div className="mt-8 rounded-full border border-green-300 bg-green-50 px-6 py-3 text-center text-sm font-semibold text-green-700">
+                  Current plan
+                </div>
+              ) : (
+                <form
+                  action="/api/create-checkout-session"
+                  method="POST"
+                  className="mt-8"
+                >
+                  <input type="hidden" name="plan" value="premium" />
 
-                <button className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">
-                  Choose Premium
-                </button>
-              </form>
+                  <button className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">
+                    Choose Premium
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         </section>
