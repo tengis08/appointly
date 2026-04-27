@@ -19,7 +19,7 @@ async function getLoggedMaster() {
 
   const { data: account } = await supabaseAdmin
     .from("master_accounts")
-    .select("master_slug, email")
+    .select("master_slug, email, stripe_customer_id, plan_type, subscription_status")
     .eq("user_id", user.id)
     .single();
 
@@ -61,10 +61,32 @@ export async function POST(request: Request) {
   const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
 
+  const subscriptionData: {
+    metadata: {
+      master_slug: string;
+      plan: string;
+    };
+    trial_period_days?: number;
+  } = {
+    metadata: {
+      master_slug: loggedMaster.master_slug,
+      plan,
+    },
+  };
+
+  // First 14 days of Basic are free.
+  // After trial, Stripe automatically starts charging $9.99/month.
+  if (plan === "basic") {
+    subscriptionData.trial_period_days = 14;
+  }
+
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
     payment_method_types: ["card"],
-    customer_email: loggedMaster.email,
+    customer: loggedMaster.stripe_customer_id || undefined,
+    customer_email: loggedMaster.stripe_customer_id
+      ? undefined
+      : loggedMaster.email,
     line_items: [
       {
         price: priceId,
@@ -75,12 +97,7 @@ export async function POST(request: Request) {
       master_slug: loggedMaster.master_slug,
       plan,
     },
-    subscription_data: {
-      metadata: {
-        master_slug: loggedMaster.master_slug,
-        plan,
-      },
-    },
+    subscription_data: subscriptionData,
     success_url: `${siteUrl}/dashboard/${loggedMaster.master_slug}/billing?success=1&plan=${plan}`,
     cancel_url: `${siteUrl}/dashboard/${loggedMaster.master_slug}/billing?cancelled=1`,
   });
