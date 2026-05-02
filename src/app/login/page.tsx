@@ -1,46 +1,28 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+export const dynamic = "force-dynamic";
 
-  const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
-  const [errorText, setErrorText] = useState("");
+type LoginPageProps = {
+  searchParams: Promise<{
+    error?: string;
+    "password-reset"?: string;
+  }>;
+};
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+function getErrorText(error?: string) {
+  if (error === "missing-fields") return "Please enter email and password.";
+  if (error === "invalid-login") return "Invalid email or password.";
+  if (error === "server-error") return "Unexpected server error. Please try again.";
+  return "";
+}
 
-    setStatus("loading");
-    setErrorText("");
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const queryParams = await searchParams;
 
-    try {
-      const response = await fetch("/api/login-master", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        setStatus("error");
-        setErrorText(data?.error || `Login failed. Status: ${response.status}`);
-        return;
-      }
-
-      window.location.href = data.dashboardUrl || "/masters";
-    } catch {
-      setStatus("error");
-      setErrorText("Login request failed. Check server logs.");
-    }
-  }
+  const errorText = getErrorText(queryParams.error);
+  const passwordResetSuccess = queryParams["password-reset"] === "1";
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -56,51 +38,64 @@ export default function LoginPage() {
             Access your master dashboard.
           </p>
 
+          {passwordResetSuccess && (
+            <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-700">
+              Your password has been updated. You can now log in with your new
+              password.
+            </div>
+          )}
+
+          {errorText && (
+            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+              {errorText}
+            </div>
+          )}
+
           <form
-            onSubmit={handleSubmit}
+            action="/api/login-master"
+            method="POST"
             className="mt-8 space-y-5 rounded-3xl border border-neutral-200 p-6"
           >
             <div>
               <label className="mb-2 block text-sm font-medium text-neutral-800">
                 Email
               </label>
+
               <input
                 type="email"
+                name="email"
                 required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
                 placeholder="master@email.com"
+                className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
               />
             </div>
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-neutral-800">
-                Password
-              </label>
+              <div className="mb-2 flex items-center justify-between gap-4">
+                <label className="block text-sm font-medium text-neutral-800">
+                  Password
+                </label>
+
+                <Link
+                  href="/forgot-password"
+                  className="text-sm font-medium text-neutral-700 underline underline-offset-4 hover:text-black"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+
               <input
                 type="password"
+                name="password"
                 required
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
                 placeholder="Your password"
+                className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={status === "loading"}
-              className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {status === "loading" ? "Logging in..." : "Log in"}
+            <button className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">
+              Log in
             </button>
-
-            {status === "error" && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                {errorText}
-              </div>
-            )}
 
             <p className="text-sm text-neutral-600">
               No account yet?{" "}
