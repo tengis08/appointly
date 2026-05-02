@@ -1,28 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendWelcomeEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl) {
-  throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL environment variable.");
-}
-
-if (!supabaseAnonKey) {
-  throw new Error("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable.");
-}
-
-const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: false,
-    autoRefreshToken: false,
-  },
-});
 
 type SignupPayload = Record<string, unknown>;
 
@@ -109,37 +90,11 @@ async function readSignupPayload(request: Request): Promise<SignupPayload> {
   return {};
 }
 
-async function signInAndSetCookies(params: {
-  email: string;
-  password: string;
-}) {
-  const { data, error } = await supabaseAuth.auth.signInWithPassword({
-    email: params.email,
-    password: params.password,
-  });
-
-  if (error || !data.session) {
-    console.error("signup-master sign-in after signup failed:", error);
-    return;
-  }
-
+async function clearAuthCookies() {
   const cookieStore = await cookies();
 
-  cookieStore.set("appointly_access_token", data.session.access_token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
-
-  cookieStore.set("appointly_refresh_token", data.session.refresh_token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  cookieStore.delete("appointly_access_token");
+  cookieStore.delete("appointly_refresh_token");
 }
 
 export async function POST(request: Request) {
@@ -388,16 +343,15 @@ export async function POST(request: Request) {
       console.error("signup-master welcome email failed:", emailError);
     }
 
-    await signInAndSetCookies({
-      email,
-      password,
-    });
+    await clearAuthCookies();
 
     return NextResponse.json({
       success: true,
       slug,
       dashboardUrl: `/dashboard/${slug}`,
       publicPageUrl: `/${slug}`,
+      loginUrl: "/login",
+      message: "Your page was created. Please log in to continue.",
       master: {
         slug,
         name,
