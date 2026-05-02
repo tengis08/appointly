@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendWelcomeEmail } from "@/lib/email";
+import { getClientIp, verifyTurnstileToken } from "@/lib/turnstile";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,28 @@ export async function POST(request: Request) {
 
   try {
     const payload = await readSignupPayload(request);
+
+    const turnstileToken = getPayloadString(
+      payload,
+      "turnstileToken",
+      "turnstile_token",
+      "cf-turnstile-response"
+    );
+
+    const turnstilePassed = await verifyTurnstileToken({
+      token: turnstileToken,
+      remoteIp: getClientIp(request),
+    });
+
+    if (!turnstilePassed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Security check failed. Please refresh the page and try again.",
+        },
+        { status: 403 }
+      );
+    }
 
     const rawSlug = getPayloadString(
       payload,
