@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendWelcomeEmail } from "@/lib/email";
 import { getClientIp, verifyTurnstileToken } from "@/lib/turnstile";
+import {
+  checkRateLimit,
+  cleanupOldRateLimitRows,
+  normalizeRateLimitValue,
+} from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -105,27 +110,7 @@ export async function POST(request: Request) {
   try {
     const payload = await readSignupPayload(request);
 
-    const turnstileToken = getPayloadString(
-      payload,
-      "turnstileToken",
-      "turnstile_token",
-      "cf-turnstile-response"
-    );
-
-    const turnstilePassed = await verifyTurnstileToken({
-      token: turnstileToken,
-      remoteIp: getClientIp(request),
-    });
-
-    if (!turnstilePassed) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Security check failed. Please refresh the page and try again.",
-        },
-        { status: 403 }
-      );
-    }
+    const clientIp = getClientIp(request) || "unknown-ip";
 
     const rawSlug = getPayloadString(
       payload,
@@ -146,6 +131,73 @@ export async function POST(request: Request) {
     const email = cleanEmail(
       getPayloadString(payload, "email", "loginEmail", "login_email")
     );
+
+    if (!email) {
+      return NextResponse.json(
+        { success: false, error: "Email is required." },
+        { status: 400 }
+      );
+    }
+
+    const ipRateLimit = await checkRateLimit({
+      key: `signup:ip:${normalizeRateLimitValue(clientIp)}`,
+      limit: 3,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!ipRateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Too many signup attempts from this connection. Please try again later.",
+        },
+        { status: 429 }
+      );
+    }
+
+    const emailRateLimit = await checkRateLimit({
+      key: `signup:email:${normalizeRateLimitValue(email)}`,
+      limit: 3,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!emailRateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Too many signup attempts for this email. Please try again later.",
+        },
+        { status: 429 }
+      );
+    }
+
+    cleanupOldRateLimitRows().catch((error) => {
+      console.error("signup-master rate limit cleanup failed:", error);
+    });
+
+    const turnstileToken = getPayloadString(
+      payload,
+      "turnstileToken",
+      "turnstile_token",
+      "cf-turnstile-response"
+    );
+
+    const turnstilePassed = await verifyTurnstileToken({
+      token: turnstileToken,
+      remoteIp: clientIp,
+    });
+
+    if (!turnstilePassed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Security check failed. Please refresh the page and try again.",
+        },
+        { status: 403 }
+      );
+    }
 
     const password = getPayloadString(payload, "password");
 

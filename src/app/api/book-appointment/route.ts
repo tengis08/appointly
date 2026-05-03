@@ -3,6 +3,11 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendBookingEmails } from "@/lib/email";
 import { canAcceptBookings } from "@/lib/subscription";
 import { getClientIp, verifyTurnstileToken } from "@/lib/turnstile";
+import {
+  checkRateLimit,
+  cleanupOldRateLimitRows,
+  normalizeRateLimitValue,
+} from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -108,25 +113,7 @@ export async function POST(request: Request) {
   try {
     const body = await readBookingPayload(request);
 
-    const turnstileToken = getString(
-      body.turnstileToken ||
-        body.turnstile_token ||
-        body["cf-turnstile-response"]
-    );
-
-    const turnstilePassed = await verifyTurnstileToken({
-      token: turnstileToken,
-      remoteIp: getClientIp(request),
-    });
-
-    if (!turnstilePassed) {
-      return NextResponse.json(
-        {
-          error: "Security check failed. Please refresh the page and try again.",
-        },
-        { status: 403 }
-      );
-    }
+    const clientIp = getClientIp(request) || "unknown-ip";
 
     const masterSlug = getString(body.masterSlug || body.master_slug);
     const serviceName = getString(body.serviceName || body.service_name);
@@ -157,6 +144,62 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Missing required booking fields." },
         { status: 400 }
+      );
+    }
+
+    const ipRateLimit = await checkRateLimit({
+      key: `booking:ip:${normalizeRateLimitValue(clientIp)}`,
+      limit: 5,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!ipRateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error:
+            "Too many booking attempts from this connection. Please try again later.",
+        },
+        { status: 429 }
+      );
+    }
+
+    const masterRateLimit = await checkRateLimit({
+      key: `booking:master:${normalizeRateLimitValue(masterSlug)}`,
+      limit: 100,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!masterRateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error:
+            "This master is receiving too many booking requests. Please try again later.",
+        },
+        { status: 429 }
+      );
+    }
+
+    cleanupOldRateLimitRows().catch((error) => {
+      console.error("book-appointment rate limit cleanup failed:", error);
+    });
+
+    const turnstileToken = getString(
+      body.turnstileToken ||
+        body.turnstile_token ||
+        body["cf-turnstile-response"]
+    );
+
+    const turnstilePassed = await verifyTurnstileToken({
+      token: turnstileToken,
+      remoteIp: clientIp,
+    });
+
+    if (!turnstilePassed) {
+      return NextResponse.json(
+        {
+          error: "Security check failed. Please refresh the page and try again.",
+        },
+        { status: 403 }
       );
     }
 
