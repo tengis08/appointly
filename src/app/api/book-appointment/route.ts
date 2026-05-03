@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendBookingEmails } from "@/lib/email";
 import { canAcceptBookings } from "@/lib/subscription";
+import { getClientIp, verifyTurnstileToken } from "@/lib/turnstile";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,9 @@ type BookingPayload = {
   client_phone?: string;
   clientEmail?: string;
   client_email?: string;
+  turnstileToken?: string;
+  turnstile_token?: string;
+  "cf-turnstile-response"?: string;
 };
 
 function getString(value: unknown) {
@@ -103,6 +107,26 @@ async function readBookingPayload(request: Request): Promise<BookingPayload> {
 export async function POST(request: Request) {
   try {
     const body = await readBookingPayload(request);
+
+    const turnstileToken = getString(
+      body.turnstileToken ||
+        body.turnstile_token ||
+        body["cf-turnstile-response"]
+    );
+
+    const turnstilePassed = await verifyTurnstileToken({
+      token: turnstileToken,
+      remoteIp: getClientIp(request),
+    });
+
+    if (!turnstilePassed) {
+      return NextResponse.json(
+        {
+          error: "Security check failed. Please refresh the page and try again.",
+        },
+        { status: 403 }
+      );
+    }
 
     const masterSlug = getString(body.masterSlug || body.master_slug);
     const serviceName = getString(body.serviceName || body.service_name);
@@ -214,7 +238,10 @@ export async function POST(request: Request) {
         .neq("status", "cancelled");
 
     if (existingError) {
-      console.error("book-appointment existing appointments error:", existingError);
+      console.error(
+        "book-appointment existing appointments error:",
+        existingError
+      );
 
       return NextResponse.json(
         { error: "Could not check existing appointments." },

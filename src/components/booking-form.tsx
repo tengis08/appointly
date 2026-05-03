@@ -3,11 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { formatTimeLabel, getTodayDateString } from "@/lib/booking";
 import type { Service } from "@/types/master";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 
 type BookingFormProps = {
   masterSlug: string;
   services: Service[];
 };
+
+const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 export function BookingForm({ masterSlug, services }: BookingFormProps) {
   const [serviceName, setServiceName] = useState(services[0]?.name ?? "");
@@ -19,7 +22,12 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
   const [confirmEmail, setConfirmEmail] = useState("");
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [turnstileToken, setTurnstileToken] = useState("");
+
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+
   const [errorText, setErrorText] = useState("");
 
   const minDate = useMemo(() => getTodayDateString(), []);
@@ -44,7 +52,10 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           serviceName,
         });
 
-        const response = await fetch(`/api/available-slots?${params.toString()}`);
+        const response = await fetch(
+          `/api/available-slots?${params.toString()}`
+        );
+
         const data = await response.json().catch(() => null);
 
         if (!isActive) {
@@ -73,6 +84,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
     setStatus("loading");
     setErrorText("");
 
@@ -85,6 +97,12 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
     if (!appointmentTime) {
       setStatus("error");
       setErrorText("Please select an available time slot.");
+      return;
+    }
+
+    if (!turnstileToken) {
+      setStatus("error");
+      setErrorText("Please complete the security check.");
       return;
     }
 
@@ -101,6 +119,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
         clientName,
         clientPhone,
         clientEmail,
+        turnstileToken,
       }),
     });
 
@@ -109,6 +128,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
     if (!response.ok) {
       setStatus("error");
       setErrorText(data?.error || "Booking request failed.");
+      setTurnstileToken("");
       return;
     }
 
@@ -120,6 +140,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
     setClientEmail("");
     setConfirmEmail("");
     setAvailableSlots([]);
+    setTurnstileToken("");
 
     if (services[0]?.name) {
       setServiceName(services[0].name);
@@ -149,6 +170,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           <label className="mb-2 block text-sm font-medium text-neutral-800">
             Service
           </label>
+
           <select
             value={serviceName}
             onChange={(e) => setServiceName(e.target.value)}
@@ -166,6 +188,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           <label className="mb-2 block text-sm font-medium text-neutral-800">
             Preferred date
           </label>
+
           <input
             type="date"
             required
@@ -180,14 +203,18 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           <label className="mb-2 block text-sm font-medium text-neutral-800">
             Available time slots
           </label>
+
           <select
             required
             value={appointmentTime}
             onChange={(e) => setAppointmentTime(e.target.value)}
-            disabled={!appointmentDate || slotsLoading || availableSlots.length === 0}
+            disabled={
+              !appointmentDate || slotsLoading || availableSlots.length === 0
+            }
             className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500 disabled:cursor-not-allowed disabled:bg-neutral-100"
           >
             <option value="">{slotsPlaceholder}</option>
+
             {availableSlots.map((slot) => (
               <option key={slot} value={slot}>
                 {formatTimeLabel(slot)}
@@ -206,6 +233,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           <label className="mb-2 block text-sm font-medium text-neutral-800">
             Your name
           </label>
+
           <input
             type="text"
             required
@@ -220,6 +248,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           <label className="mb-2 block text-sm font-medium text-neutral-800">
             Phone
           </label>
+
           <input
             type="tel"
             value={clientPhone}
@@ -233,6 +262,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           <label className="mb-2 block text-sm font-medium text-neutral-800">
             Email
           </label>
+
           <input
             type="email"
             required
@@ -247,6 +277,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           <label className="mb-2 block text-sm font-medium text-neutral-800">
             Confirm email
           </label>
+
           <input
             type="email"
             required
@@ -257,6 +288,26 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           />
         </div>
 
+        {turnstileSiteKey ? (
+          <div className="rounded-2xl border border-neutral-200 p-4">
+            <p className="mb-3 text-sm font-medium text-neutral-800">
+              Security check
+            </p>
+
+            <TurnstileWidget
+              siteKey={turnstileSiteKey}
+              onVerify={(token) => setTurnstileToken(token)}
+              onExpire={() => setTurnstileToken("")}
+              onError={() => setTurnstileToken("")}
+            />
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+            Turnstile site key is missing. Booking security check is not
+            visible.
+          </div>
+        )}
+
         <button
           type="submit"
           disabled={status === "loading"}
@@ -266,15 +317,15 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
         </button>
 
         {status === "success" && (
-          <p className="text-sm font-medium text-green-600">
+          <p className="text-sm font-medium text-green-700">
             Your booking request has been sent successfully.
           </p>
         )}
 
         {status === "error" && (
-          <p className="text-sm font-medium text-red-600">
-            Something went wrong: {errorText}
-          </p>
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {errorText}
+          </div>
         )}
       </form>
     </div>
