@@ -41,7 +41,7 @@ export default function SignupPage() {
     setErrorText("");
     setCreatedSlug("");
 
-    if (!turnstileToken && process.env.NODE_ENV === "production") {
+    if (!turnstileToken) {
       setStatus("error");
       setErrorText("Please complete the security check.");
       return;

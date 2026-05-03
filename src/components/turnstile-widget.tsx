@@ -36,10 +36,28 @@ export function TurnstileWidget({
 }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | null>(null);
+
+  const onVerifyRef = useRef(onVerify);
+  const onExpireRef = useRef(onExpire);
+  const onErrorRef = useRef(onError);
+
   const [scriptReady, setScriptReady] = useState(false);
 
   useEffect(() => {
+    onVerifyRef.current = onVerify;
+  }, [onVerify]);
+
+  useEffect(() => {
+    onExpireRef.current = onExpire;
+  }, [onExpire]);
+
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
+
+  useEffect(() => {
     if (!scriptReady) return;
+    if (!siteKey) return;
     if (!containerRef.current) return;
     if (!window.turnstile) return;
     if (widgetIdRef.current) return;
@@ -47,13 +65,13 @@ export function TurnstileWidget({
     widgetIdRef.current = window.turnstile.render(containerRef.current, {
       sitekey: siteKey,
       callback: (token: string) => {
-        onVerify(token);
+        onVerifyRef.current(token);
       },
       "expired-callback": () => {
-        onExpire?.();
+        onExpireRef.current?.();
       },
       "error-callback": () => {
-        onError?.();
+        onErrorRef.current?.();
       },
     });
 
@@ -63,7 +81,7 @@ export function TurnstileWidget({
         widgetIdRef.current = null;
       }
     };
-  }, [scriptReady, siteKey, onVerify, onExpire, onError]);
+  }, [scriptReady, siteKey]);
 
   return (
     <>
@@ -71,6 +89,7 @@ export function TurnstileWidget({
         src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
         async
         defer
+        strategy="afterInteractive"
         onLoad={() => setScriptReady(true)}
       />
 
