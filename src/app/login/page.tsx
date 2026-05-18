@@ -1,28 +1,66 @@
+"use client";
+
+import { Suspense, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { useLocale } from "@/components/locale-provider";
+import type { Locale } from "@/lib/translations";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 
-export const dynamic = "force-dynamic";
+const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
-type LoginPageProps = {
-  searchParams: Promise<{
-    error?: string;
-    "password-reset"?: string;
-  }>;
-};
+const loginExtraText = {
+  en: {
+    tooManyAttempts:
+      "Too many login attempts. Please wait and try again later.",
+    securityCheckFailed:
+      "Security check failed. Please refresh the page and try again.",
+    missingTurnstileSiteKey:
+      "Turnstile site key is missing. Login security check is not visible.",
+  },
+  es: {
+    tooManyAttempts:
+      "Demasiados intentos de inicio de sesión. Espera e inténtalo más tarde.",
+    securityCheckFailed:
+      "La verificación de seguridad falló. Actualiza la página e inténtalo de nuevo.",
+    missingTurnstileSiteKey:
+      "Falta la clave de Turnstile. La verificación de seguridad no se muestra.",
+  },
+  ru: {
+    tooManyAttempts:
+      "Слишком много попыток входа. Подождите и попробуйте позже.",
+    securityCheckFailed:
+      "Проверка безопасности не прошла. Обновите страницу и попробуйте снова.",
+    missingTurnstileSiteKey:
+      "Не найден ключ Turnstile. Проверка безопасности при входе не отображается.",
+  },
+} satisfies Record<Locale, Record<string, string>>;
 
-function getErrorText(error?: string) {
-  if (error === "missing-fields") return "Please enter email and password.";
-  if (error === "invalid-login") return "Invalid email or password.";
-  if (error === "server-error") return "Unexpected server error. Please try again.";
-  return "";
-}
+function LoginContent() {
+  const { locale, t } = useLocale();
+  const searchParams = useSearchParams();
+  const [turnstileToken, setTurnstileToken] = useState("");
 
-export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const queryParams = await searchParams;
+  const error = searchParams.get("error") || "";
+  const passwordResetSuccess = searchParams.get("password-reset") === "1";
 
-  const errorText = getErrorText(queryParams.error);
-  const passwordResetSuccess = queryParams["password-reset"] === "1";
+  function getErrorText() {
+    if (error === "missing-fields") return t.loginErrorMissingFields;
+    if (error === "invalid-login") return t.loginErrorInvalid;
+    if (error === "server-error") return t.loginErrorServer;
+    if (error === "security-check-failed") {
+      return loginExtraText[locale].securityCheckFailed;
+    }
+    if (error === "too-many-attempts") {
+      return loginExtraText[locale].tooManyAttempts;
+    }
+
+    return "";
+  }
+
+  const errorText = getErrorText();
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -31,17 +69,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <main className="flex-1">
         <section className="mx-auto max-w-xl px-6 py-16">
           <h1 className="text-4xl font-bold tracking-tight text-neutral-900">
-            Log in
+            {t.loginTitle}
           </h1>
 
-          <p className="mt-4 text-neutral-600">
-            Access your master dashboard.
-          </p>
+          <p className="mt-4 text-neutral-600">{t.loginSubtitle}</p>
 
           {passwordResetSuccess && (
             <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-700">
-              Your password has been updated. You can now log in with your new
-              password.
+              {t.passwordResetSuccess}
             </div>
           )}
 
@@ -58,7 +93,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           >
             <div>
               <label className="mb-2 block text-sm font-medium text-neutral-800">
-                Email
+                {t.emailLabel}
               </label>
 
               <input
@@ -73,14 +108,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             <div>
               <div className="mb-2 flex items-center justify-between gap-4">
                 <label className="block text-sm font-medium text-neutral-800">
-                  Password
+                  {t.passwordLabel}
                 </label>
 
                 <Link
                   href="/forgot-password"
                   className="text-sm font-medium text-neutral-700 underline underline-offset-4 hover:text-black"
                 >
-                  Forgot password?
+                  {t.forgotPassword}
                 </Link>
               </div>
 
@@ -88,19 +123,45 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 type="password"
                 name="password"
                 required
-                placeholder="Your password"
+                placeholder={t.passwordPlaceholder}
                 className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
               />
             </div>
 
+
+            {turnstileSiteKey ? (
+              <div className="rounded-2xl border border-neutral-200 p-4">
+                <p className="mb-3 text-sm font-medium text-neutral-800">
+                  {t.securityCheck}
+                </p>
+
+                <TurnstileWidget
+                  siteKey={turnstileSiteKey}
+                  onVerify={(token) => setTurnstileToken(token)}
+                  onExpire={() => setTurnstileToken("")}
+                  onError={() => setTurnstileToken("")}
+                />
+
+                <input
+                  type="hidden"
+                  name="turnstileToken"
+                  value={turnstileToken}
+                />
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+                {loginExtraText[locale].missingTurnstileSiteKey}
+              </div>
+            )}
+
             <button className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">
-              Log in
+              {t.login}
             </button>
 
             <p className="text-sm text-neutral-600">
-              No account yet?{" "}
+              {t.noAccountYet}{" "}
               <Link href="/signup" className="underline underline-offset-4">
-                Create master page
+                {t.createMasterPage}
               </Link>
             </p>
           </form>
@@ -109,5 +170,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
       <Footer />
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }

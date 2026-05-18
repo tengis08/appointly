@@ -4,7 +4,9 @@ import { useState } from "react";
 import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
 import { useLocale } from "@/components/locale-provider";
-import { supabase } from "@/lib/supabase";
+import { TurnstileWidget } from "@/components/turnstile-widget";
+
+const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
 export default function TengisPage() {
   const { t } = useLocale();
@@ -13,26 +15,23 @@ export default function TengisPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [turnstileToken, setTurnstileToken] = useState("");
+
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
+    "idle"
+  );
+
   const [errorText, setErrorText] = useState("");
 
-    async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
     setStatus("loading");
     setErrorText("");
 
-    const payload = {
-      name,
-      email,
-      phone,
-      message,
-    };
-
-    const { error } = await supabase.from("contact_requests").insert([payload]);
-
-    if (error) {
+    if (!turnstileToken) {
       setStatus("error");
-      setErrorText(error.message);
+      setErrorText(t.completeSecurityCheck);
       return;
     }
 
@@ -41,13 +40,21 @@ export default function TengisPage() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        name,
+        email,
+        phone,
+        message,
+        turnstileToken,
+      }),
     });
 
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok || !data?.success) {
       setStatus("error");
-      setErrorText(data?.error || "Email notification failed.");
+      setErrorText(data?.error || "Contact request failed.");
+      setTurnstileToken("");
       return;
     }
 
@@ -56,6 +63,7 @@ export default function TengisPage() {
     setEmail("");
     setPhone("");
     setMessage("");
+    setTurnstileToken("");
   }
 
   return (
@@ -78,11 +86,13 @@ export default function TengisPage() {
               <label className="mb-2 block text-sm font-medium text-neutral-800">
                 {t.formName}
               </label>
+
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
+                maxLength={80}
                 className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
                 placeholder={t.formName}
               />
@@ -92,11 +102,13 @@ export default function TengisPage() {
               <label className="mb-2 block text-sm font-medium text-neutral-800">
                 {t.formEmail}
               </label>
+
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                maxLength={160}
                 className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
                 placeholder="your@email.com"
               />
@@ -106,10 +118,12 @@ export default function TengisPage() {
               <label className="mb-2 block text-sm font-medium text-neutral-800">
                 {t.formPhone}
               </label>
+
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                maxLength={40}
                 className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
                 placeholder="+1 (___) ___-____"
               />
@@ -119,32 +133,53 @@ export default function TengisPage() {
               <label className="mb-2 block text-sm font-medium text-neutral-800">
                 {t.formMessage}
               </label>
+
               <textarea
                 rows={5}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
+                maxLength={1000}
                 className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
                 placeholder={t.formMessage}
               />
             </div>
+
+            {turnstileSiteKey ? (
+              <div className="rounded-2xl border border-neutral-200 p-4">
+                <p className="mb-3 text-sm font-medium text-neutral-800">
+                  {t.securityCheck}
+                </p>
+
+                <TurnstileWidget
+                  siteKey={turnstileSiteKey}
+                  onVerify={(token) => setTurnstileToken(token)}
+                  onExpire={() => setTurnstileToken("")}
+                  onError={() => setTurnstileToken("")}
+                />
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
+                {t.missingTurnstileSiteKey}
+              </div>
+            )}
 
             <button
               type="submit"
               disabled={status === "loading"}
               className="rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {status === "loading" ? "Sending..." : t.sendRequest}
+              {status === "loading" ? t.sending : t.sendRequest}
             </button>
 
             {status === "success" && (
               <p className="text-sm font-medium text-green-600">
-                Your request has been sent successfully.
+                {t.requestSent}
               </p>
             )}
 
             {status === "error" && (
               <p className="text-sm font-medium text-red-600">
-                Something went wrong: {errorText}
+                {t.somethingWentWrong} {errorText}
               </p>
             )}
           </form>

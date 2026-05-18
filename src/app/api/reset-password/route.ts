@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getClientIp } from "@/lib/turnstile";
+import {
+  checkRateLimit,
+  cleanupOldRateLimitRows,
+  normalizeRateLimitValue,
+} from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+function hashPasswordResetToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
 
 export async function POST(request: Request) {
   try {
@@ -11,6 +22,8 @@ export async function POST(request: Request) {
     const password = String(formData.get("password") || "");
     const confirmPassword = String(formData.get("confirmPassword") || "");
 
+    const clientIp = getClientIp(request) || "unknown-ip";
+
     if (!token) {
       return NextResponse.redirect(
         new URL("/reset-password?error=missing-token", request.url),
@@ -18,24 +31,53 @@ export async function POST(request: Request) {
       );
     }
 
+    const resetRateLimit = await checkRateLimit({
+      key: `reset-password:ip:${normalizeRateLimitValue(clientIp)}`,
+      limit: 10,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!resetRateLimit.allowed) {
+      return NextResponse.redirect(
+        new URL("/reset-password?error=server-error", request.url),
+        { status: 303 }
+      );
+    }
+
+    cleanupOldRateLimitRows().catch((error) => {
+      console.error("reset-password rate limit cleanup failed:", error);
+    });
+
     if (!password || password.length < 6) {
       return NextResponse.redirect(
-        new URL(`/reset-password?token=${token}&error=short-password`, request.url),
+        new URL(
+          `/reset-password?token=${encodeURIComponent(
+            token
+          )}&error=short-password`,
+          request.url
+        ),
         { status: 303 }
       );
     }
 
     if (password !== confirmPassword) {
       return NextResponse.redirect(
-        new URL(`/reset-password?token=${token}&error=passwords-do-not-match`, request.url),
+        new URL(
+          `/reset-password?token=${encodeURIComponent(
+            token
+          )}&error=passwords-do-not-match`,
+          request.url
+        ),
         { status: 303 }
       );
     }
 
+    const tokenHash = hashPasswordResetToken(token);
+
     const { data: account, error: accountError } = await supabaseAdmin
       .from("master_accounts")
       .select("user_id, password_reset_expires_at")
-      .eq("password_reset_token", token)
+      .eq("password_reset_token", tokenHash)
       .maybeSingle();
 
     if (accountError || !account) {
@@ -65,7 +107,12 @@ export async function POST(request: Request) {
       console.error("reset-password auth error:", authError);
 
       return NextResponse.redirect(
-        new URL(`/reset-password?token=${token}&error=update-failed`, request.url),
+        new URL(
+          `/reset-password?token=${encodeURIComponent(
+            token
+          )}&error=update-failed`,
+          request.url
+        ),
         { status: 303 }
       );
     }

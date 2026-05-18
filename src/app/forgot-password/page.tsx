@@ -1,20 +1,17 @@
+"use client";
+
+import { Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { useLocale } from "@/components/locale-provider";
 
-export const dynamic = "force-dynamic";
+function ForgotPasswordContent() {
+  const { t } = useLocale();
+  const searchParams = useSearchParams();
 
-type ForgotPasswordPageProps = {
-  searchParams: Promise<{
-    sent?: string;
-  }>;
-};
-
-export default async function ForgotPasswordPage({
-  searchParams,
-}: ForgotPasswordPageProps) {
-  const queryParams = await searchParams;
-  const sent = queryParams.sent === "1";
+  const sent = searchParams.get("sent") === "1";
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -23,18 +20,16 @@ export default async function ForgotPasswordPage({
       <main className="flex-1">
         <section className="mx-auto max-w-xl px-6 py-16">
           <h1 className="text-4xl font-bold tracking-tight text-neutral-900">
-            Reset password
+            {t.forgotPasswordTitle}
           </h1>
 
           <p className="mt-4 text-neutral-600">
-            Enter your Appointly login email. If an account exists, we will send
-            a password reset link.
+            {t.forgotPasswordSubtitle}
           </p>
 
           {sent && (
             <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-medium text-green-700">
-              If this email exists in Appointly, a password reset link has been
-              sent.
+              {t.forgotPasswordSent}
             </div>
           )}
 
@@ -45,7 +40,7 @@ export default async function ForgotPasswordPage({
           >
             <div>
               <label className="mb-2 block text-sm font-medium text-neutral-800">
-                Email
+                {t.emailLabel}
               </label>
 
               <input
@@ -58,13 +53,13 @@ export default async function ForgotPasswordPage({
             </div>
 
             <button className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">
-              Send reset link
+              {t.sendResetLink}
             </button>
 
             <p className="text-sm text-neutral-600">
-              Remembered your password?{" "}
+              {t.rememberedPassword}{" "}
               <Link href="/login" className="underline underline-offset-4">
-                Log in
+                {t.login}
               </Link>
             </p>
           </form>
@@ -73,5 +68,13 @@ export default async function ForgotPasswordPage({
 
       <Footer />
     </div>
+  );
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense>
+      <ForgotPasswordContent />
+    </Suspense>
   );
 }

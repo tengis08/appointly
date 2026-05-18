@@ -1,33 +1,31 @@
+"use client";
+
+import { Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { useLocale } from "@/components/locale-provider";
 
-export const dynamic = "force-dynamic";
+function ResetPasswordContent() {
+  const { t } = useLocale();
+  const searchParams = useSearchParams();
 
-type ResetPasswordPageProps = {
-  searchParams: Promise<{
-    token?: string;
-    error?: string;
-  }>;
-};
+  const token = searchParams.get("token") || "";
+  const error = searchParams.get("error") || "";
 
-function getErrorText(error?: string) {
-  if (error === "missing-token") return "Reset token is missing.";
-  if (error === "short-password") return "Password must be at least 6 characters.";
-  if (error === "passwords-do-not-match") return "Passwords do not match.";
-  if (error === "invalid-token") return "This reset link is invalid.";
-  if (error === "expired-token") return "This reset link has expired.";
-  if (error === "update-failed") return "Password update failed.";
-  if (error === "server-error") return "Unexpected server error.";
-  return "";
-}
+  function getErrorText() {
+    if (error === "missing-token") return t.resetErrorMissingToken;
+    if (error === "short-password") return t.resetErrorShortPassword;
+    if (error === "passwords-do-not-match") return t.resetErrorPasswordsDoNotMatch;
+    if (error === "invalid-token") return t.resetErrorInvalidToken;
+    if (error === "expired-token") return t.resetErrorExpiredToken;
+    if (error === "update-failed") return t.resetErrorUpdateFailed;
+    if (error === "server-error") return t.resetErrorServer;
+    return "";
+  }
 
-export default async function ResetPasswordPage({
-  searchParams,
-}: ResetPasswordPageProps) {
-  const queryParams = await searchParams;
-  const token = queryParams.token || "";
-  const errorText = getErrorText(queryParams.error);
+  const errorText = getErrorText();
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -36,11 +34,11 @@ export default async function ResetPasswordPage({
       <main className="flex-1">
         <section className="mx-auto max-w-xl px-6 py-16">
           <h1 className="text-4xl font-bold tracking-tight text-neutral-900">
-            Create new password
+            {t.resetPasswordTitle}
           </h1>
 
           <p className="mt-4 text-neutral-600">
-            Enter a new password for your Appointly account.
+            {t.resetPasswordSubtitle}
           </p>
 
           {errorText && (
@@ -52,14 +50,14 @@ export default async function ResetPasswordPage({
           {!token ? (
             <div className="mt-8 rounded-3xl border border-neutral-200 p-6">
               <p className="text-neutral-700">
-                This reset link is missing a token.
+                {t.resetTokenMissingText}
               </p>
 
               <Link
                 href="/forgot-password"
                 className="mt-5 inline-block rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white"
               >
-                Request new reset link
+                {t.requestNewResetLink}
               </Link>
             </div>
           ) : (
@@ -72,7 +70,7 @@ export default async function ResetPasswordPage({
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  New password
+                  {t.newPassword}
                 </label>
 
                 <input
@@ -80,14 +78,14 @@ export default async function ResetPasswordPage({
                   name="password"
                   required
                   minLength={6}
-                  placeholder="New password"
+                  placeholder={t.newPassword}
                   className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
                 />
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  Confirm new password
+                  {t.confirmNewPassword}
                 </label>
 
                 <input
@@ -95,13 +93,13 @@ export default async function ResetPasswordPage({
                   name="confirmPassword"
                   required
                   minLength={6}
-                  placeholder="Repeat new password"
+                  placeholder={t.repeatNewPassword}
                   className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
                 />
               </div>
 
               <button className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800">
-                Save new password
+                {t.saveNewPassword}
               </button>
             </form>
           )}
@@ -110,5 +108,13 @@ export default async function ResetPasswordPage({
 
       <Footer />
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

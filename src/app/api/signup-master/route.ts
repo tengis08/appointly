@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { isReservedSubdomain } from "@/lib/subdomains";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { normalizeTimeZone } from "@/lib/timezones";
 import { sendWelcomeEmail } from "@/lib/email";
 import { getClientIp, verifyTurnstileToken } from "@/lib/turnstile";
 import {
@@ -214,7 +216,9 @@ export async function POST(request: Request) {
 
     const phone = cleanPhone(getPayloadString(payload, "phone"));
     const whatsapp = cleanPhone(getPayloadString(payload, "whatsapp")) || phone;
+    const country = getPayloadString(payload, "country");
     const city = getPayloadString(payload, "city");
+    const timeZone = normalizeTimeZone(getPayloadString(payload, "timeZone", "timezone", "time_zone"));
     const neighborhood = getPayloadString(payload, "neighborhood");
     const about = getPayloadString(payload, "about");
 
@@ -256,6 +260,16 @@ export async function POST(request: Request) {
     if (!slug || !name || !email || !password || !serviceName || !servicePrice) {
       return NextResponse.json(
         { success: false, error: "Missing required fields." },
+        { status: 400 }
+      );
+    }
+
+    if (isReservedSubdomain(slug)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "This public link is reserved. Please choose another link.",
+        },
         { status: 400 }
       );
     }
@@ -347,7 +361,9 @@ export async function POST(request: Request) {
           about,
           phone,
           whatsapp,
+          country: country || null,
           city,
+          timezone: timeZone,
           neighborhood,
           booking_email: bookingEmail,
           slot_step_minutes: 30,

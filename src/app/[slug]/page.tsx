@@ -1,11 +1,10 @@
-import { Footer } from "@/components/footer";
-import { Header } from "@/components/header";
-import { ContactButtons } from "@/components/contact-buttons";
-import { MasterAvatar } from "@/components/master-avatar";
-import { BookingForm } from "@/components/booking-form";
-import { masters } from "@/data/masters";
-import { getMasterFromDb } from "@/lib/masters-db";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { MasterPublicPage } from "@/components/master-public-page";
+import { getMasterFromDb } from "@/lib/masters-db";
+import { getSubdomainFromHost } from "@/lib/subdomains";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { canAcceptBookings } from "@/lib/subscription";
 
 export const dynamic = "force-dynamic";
 
@@ -13,124 +12,69 @@ type MasterPageProps = {
   params: Promise<{ slug: string }>;
 };
 
+function isPremiumAccount(params: {
+  planType: string | null | undefined;
+  subscriptionStatus: string | null | undefined;
+}) {
+  return (
+    params.planType === "premium" &&
+    canAcceptBookings({
+      planType: params.planType,
+      subscriptionStatus: params.subscriptionStatus,
+    })
+  );
+}
+
 export default async function MasterPage({ params }: MasterPageProps) {
   const { slug } = await params;
 
-  const dbMaster = await getMasterFromDb(slug);
-  const fallbackMaster = masters[slug];
+  const requestHeaders = await headers();
+  const subdomainSlug = getSubdomainFromHost(requestHeaders.get("host"));
 
-  const master = dbMaster || fallbackMaster;
+  // If this request came from a personal subdomain, the subdomain must match the slug.
+  if (subdomainSlug && subdomainSlug !== slug) {
+    notFound();
+  }
+
+  const master = await getMasterFromDb(slug);
 
   if (!master) {
     notFound();
   }
 
-  return (
-    <div className="flex min-h-screen flex-col bg-white">
-      <Header />
+  const { data: account, error: accountError } = await supabaseAdmin
+    .from("master_accounts")
+    .select("plan_type, subscription_status")
+    .eq("master_slug", slug)
+    .maybeSingle();
 
-      <main className="flex-1">
-        <section className="mx-auto max-w-6xl px-6 py-16">
-          <div className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr]">
-            <div>
-              <div className="flex flex-col gap-6 rounded-3xl border border-neutral-200 p-6 sm:flex-row sm:items-start">
-                <MasterAvatar photoUrl={master.photoUrl} name={master.name} />
+  if (accountError) {
+    console.error("public master page account error:", accountError);
+    notFound();
+  }
 
-                <div className="flex-1">
-                  <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
-                    {master.name}
-                  </h1>
+  const allowedToShowPublicPage = canAcceptBookings({
+    planType: account?.plan_type,
+    subscriptionStatus: account?.subscription_status,
+  });
 
-                  {master.about && (
-                    <p className="mt-4 max-w-2xl text-base leading-7 text-neutral-600">
-                      {master.about}
-                    </p>
-                  )}
+  if (!allowedToShowPublicPage) {
+    notFound();
+  }
 
-                  <div className="mt-5 space-y-2 text-sm text-neutral-700">
-                    {master.address && (
-                      <p>
-                        <span className="font-medium text-neutral-900">
-                          Address:
-                        </span>{" "}
-                        {master.address}
-                      </p>
-                    )}
+  const premiumAccount = isPremiumAccount({
+    planType: account?.plan_type,
+    subscriptionStatus: account?.subscription_status,
+  });
 
-                    {master.phone && (
-                      <p>
-                        <span className="font-medium text-neutral-900">
-                          Phone:
-                        </span>{" "}
-                        {master.phone}
-                      </p>
-                    )}
+  // Direct public pages work for Basic and Premium:
+  // appointly.vip/test-master
+  //
+  // Personal subdomains are Premium-only:
+  // test-master.appointly.vip
+  if (subdomainSlug && !premiumAccount) {
+    notFound();
+  }
 
-                    {master.city && (
-                      <p>
-                        <span className="font-medium text-neutral-900">
-                          City:
-                        </span>{" "}
-                        {master.city}
-                      </p>
-                    )}
-
-                    {master.neighborhood && (
-                      <p>
-                        <span className="font-medium text-neutral-900">
-                          Neighborhood:
-                        </span>{" "}
-                        {master.neighborhood}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="mt-6">
-                    <ContactButtons
-                      phone={master.phone}
-                      whatsapp={master.whatsapp}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-8 rounded-3xl border border-neutral-200 p-6">
-                <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">
-                  Services
-                </h2>
-
-                <div className="mt-6 space-y-4">
-                  {master.services.map((service) => (
-                    <div
-                      key={service.id}
-                      className="flex flex-col gap-2 rounded-2xl border border-neutral-200 p-4 sm:flex-row sm:items-center sm:justify-between"
-                    >
-                      <div>
-                        <h3 className="text-base font-semibold text-neutral-900">
-                          {service.name}
-                        </h3>
-                        <p className="mt-1 text-sm text-neutral-600">
-                          Duration: {service.duration}
-                        </p>
-                      </div>
-
-                      <div className="text-base font-semibold text-neutral-900">
-                        {service.price}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <BookingForm masterSlug={master.slug} services={master.services} />
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <Footer />
-    </div>
-  );
+  return <MasterPublicPage master={master} isPremium={premiumAccount} />;
 }

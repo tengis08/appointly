@@ -1,19 +1,45 @@
-import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { MasterDashboardClient } from "@/components/master-dashboard-client";
 import { requireMasterAccess } from "@/lib/master-auth";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getPublicBookingUrl } from "@/lib/subdomains";
+import { getDateStringInTimeZone, normalizeTimeZone } from "@/lib/timezones";
 
 export const dynamic = "force-dynamic";
 
 type MasterDashboardPageProps = {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{
+    startDate?: string;
+    endDate?: string;
     date?: string;
     sort?: string;
+    calendar?: string;
   }>;
 };
+
+function normalizeDateInput(value: string | null | undefined) {
+  const text = String(value || "").trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  return "";
+}
+
+function isPremiumAccount(
+  planType: string | null,
+  subscriptionStatus: string | null
+) {
+  return (
+    planType === "premium" &&
+    (subscriptionStatus === "active" || subscriptionStatus === "trialing")
+  );
+}
 
 export default async function MasterDashboardPage({
   params,
@@ -24,12 +50,18 @@ export default async function MasterDashboardPage({
 
   await requireMasterAccess(slug);
 
-  const selectedDate = queryParams.date || "";
+  const requestHeaders = await headers();
+  const requestHost = requestHeaders.get("host") || "localhost:3000";
+  const requestProtocol =
+    requestHeaders.get("x-forwarded-proto") ||
+    (requestHost.includes("localhost") ? "http" : "https");
+  const requestSiteUrl = `${requestProtocol}://${requestHost}`;
+
   const selectedSort = queryParams.sort === "oldest" ? "oldest" : "newest";
 
   const { data: master } = await supabaseAdmin
     .from("masters")
-    .select("slug, name")
+    .select("slug, name, timezone")
     .eq("slug", slug)
     .single();
 
@@ -37,15 +69,51 @@ export default async function MasterDashboardPage({
     notFound();
   }
 
+  const masterTimeZone = normalizeTimeZone(master.timezone);
+  const today = getDateStringInTimeZone(new Date(), masterTimeZone);
+
+  const selectedStartDate =
+    normalizeDateInput(queryParams.startDate) ||
+    normalizeDateInput(queryParams.date) ||
+    today;
+
+  const selectedEndDate =
+    normalizeDateInput(queryParams.endDate) || selectedStartDate;
+
+  const rangeStart =
+    selectedStartDate <= selectedEndDate ? selectedStartDate : selectedEndDate;
+
+  const rangeEnd =
+    selectedStartDate <= selectedEndDate ? selectedEndDate : selectedStartDate;
+
+  const { data: account } = await supabaseAdmin
+    .from("master_accounts")
+    .select("plan_type, subscription_status, calendar_feed_token")
+    .eq("master_slug", slug)
+    .maybeSingle();
+
+  const isPremium = isPremiumAccount(
+    account?.plan_type || null,
+    account?.subscription_status || null
+  );
+
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || requestSiteUrl).replace(/\/$/, "");
+  const calendarFeedUrl =
+    isPremium && account?.calendar_feed_token && siteUrl
+      ? `${siteUrl}/api/master-calendar-feed/${account.calendar_feed_token}.ics`
+      : "";
+
+  const publicBookingUrl = getPublicBookingUrl(slug, isPremium, siteUrl);
+
   let appointmentsQuery = supabaseAdmin
     .from("appointments")
-    .select("*")
+    .select(
+      "id, appointment_date, appointment_time, service_name, client_name, client_phone, client_email, client_note"
+    )
     .eq("master_slug", slug)
-    .neq("status", "cancelled");
-
-  if (selectedDate) {
-    appointmentsQuery = appointmentsQuery.eq("appointment_date", selectedDate);
-  }
+    .eq("status", "active")
+    .gte("appointment_date", rangeStart)
+    .lte("appointment_date", rangeEnd);
 
   appointmentsQuery =
     selectedSort === "oldest"
@@ -62,165 +130,19 @@ export default async function MasterDashboardPage({
     <div className="flex min-h-screen flex-col bg-white">
       <Header />
 
-      <main className="flex-1">
-        <section className="mx-auto max-w-6xl px-6 py-16">
-          <p className="text-sm font-medium text-neutral-500">
-            Master dashboard
-          </p>
-
-          <h1 className="mt-2 text-5xl font-bold tracking-tight text-neutral-900">
-            {master.name}
-          </h1>
-
-          <p className="mt-5 text-lg text-neutral-600">
-            View your active booking requests.
-          </p>
-
-          <div className="mt-10 rounded-3xl border border-neutral-200 p-6">
-            <form className="flex flex-wrap items-end gap-4" method="GET">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-neutral-700">
-                  Date
-                </label>
-
-                <input
-                  type="date"
-                  name="date"
-                  defaultValue={selectedDate}
-                  className="rounded-2xl border border-neutral-300 px-4 py-3"
-                />
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-neutral-700">
-                  Sort
-                </label>
-
-                <select
-                  name="sort"
-                  defaultValue={selectedSort}
-                  className="rounded-2xl border border-neutral-300 px-4 py-3"
-                >
-                  <option value="newest">Newest first</option>
-                  <option value="oldest">Oldest first</option>
-                </select>
-              </div>
-
-              <button className="rounded-full bg-neutral-900 px-8 py-3 text-sm font-semibold text-white hover:bg-neutral-800">
-                Apply filters
-              </button>
-
-              <Link
-                href={`/dashboard/${slug}`}
-                className="rounded-full border border-neutral-300 px-8 py-3 text-sm font-semibold text-neutral-800 hover:bg-neutral-100"
-              >
-                Reset
-              </Link>
-            </form>
-
-            <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href={`/${slug}`}
-                className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium hover:bg-neutral-100"
-              >
-                Open public page
-              </Link>
-
-              <Link
-                href={`/dashboard/${slug}/settings`}
-                className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium hover:bg-neutral-100"
-              >
-                Settings
-              </Link>
-
-              <Link
-                href={`/dashboard/${slug}/services`}
-                className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium hover:bg-neutral-100"
-              >
-                Services
-              </Link>
-
-              <Link
-                href={`/dashboard/${slug}/availability`}
-                className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium hover:bg-neutral-100"
-              >
-                Availability
-              </Link>
-
-              <Link
-                href={`/dashboard/${slug}/billing`}
-                className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium hover:bg-neutral-100"
-              >
-                Billing
-              </Link>
-
-              <form action="/api/logout-master" method="POST">
-                <button className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium hover:bg-neutral-100">
-                  Logout
-                </button>
-              </form>
-            </div>
-
-            <p className="mt-6 text-sm text-neutral-500">
-              Active records: {appointments?.length || 0}
-            </p>
-          </div>
-
-          <div className="mt-8 overflow-hidden rounded-3xl border border-neutral-200">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50">
-                <tr>
-                  <th className="px-5 py-4 font-semibold">Date</th>
-                  <th className="px-5 py-4 font-semibold">Time</th>
-                  <th className="px-5 py-4 font-semibold">Service</th>
-                  <th className="px-5 py-4 font-semibold">Client</th>
-                  <th className="px-5 py-4 font-semibold">Phone</th>
-                  <th className="px-5 py-4 font-semibold">Email</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {appointments && appointments.length > 0 ? (
-                  appointments.map((appointment) => (
-                    <tr
-                      key={appointment.id}
-                      className="border-t border-neutral-200"
-                    >
-                      <td className="px-5 py-4">
-                        {appointment.appointment_date}
-                      </td>
-                      <td className="px-5 py-4">
-                        {appointment.appointment_time}
-                      </td>
-                      <td className="px-5 py-4">
-                        {appointment.service_name}
-                      </td>
-                      <td className="px-5 py-4">
-                        {appointment.client_name}
-                      </td>
-                      <td className="px-5 py-4">
-                        {appointment.client_phone}
-                      </td>
-                      <td className="px-5 py-4">
-                        {appointment.client_email}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-5 py-10 text-center text-neutral-500"
-                    >
-                      No active appointments found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </main>
+      <MasterDashboardClient
+        slug={slug}
+        masterName={master.name}
+        appointments={appointments || []}
+        selectedStartDate={selectedStartDate}
+        selectedEndDate={selectedEndDate}
+        selectedSort={selectedSort}
+        isPremium={isPremium}
+        hasCalendarFeed={Boolean(account?.calendar_feed_token)}
+        calendarFeedUrl={calendarFeedUrl}
+        calendarStatus={queryParams.calendar || ""}
+        publicBookingUrl={publicBookingUrl}
+      />
 
       <Footer />
     </div>

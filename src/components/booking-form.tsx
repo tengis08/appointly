@@ -1,18 +1,75 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatTimeLabel, getTodayDateString } from "@/lib/booking";
+import { formatTimeLabel } from "@/lib/booking";
 import type { Service } from "@/types/master";
 import { TurnstileWidget } from "@/components/turnstile-widget";
+import { useLocale } from "@/components/locale-provider";
+import type { Locale } from "@/lib/translations";
+import {
+  addDaysToDateString,
+  getDateStringInTimeZone,
+  getTimeZoneLabel,
+  timeZoneText,
+} from "@/lib/timezones";
+
+type BookingThemeClasses = {
+  border: string;
+  heading: string;
+  muted: string;
+  button: string;
+  focus: string;
+  infoBox: string;
+};
 
 type BookingFormProps = {
   masterSlug: string;
   services: Service[];
+  bookingWindowDays: number;
+  masterTimeZone: string;
+  customBookingMessage?: string;
+  bookingPolicyText?: string;
+  themeClasses?: BookingThemeClasses;
 };
 
 const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
-export function BookingForm({ masterSlug, services }: BookingFormProps) {
+const bookingConfirmationText = {
+  en: {
+    successTitle: "Almost done. Please confirm your email.",
+    successText:
+      "We sent a confirmation link to your email. Your appointment is not confirmed until you click that link. Please check your inbox and spam folder.",
+    timeZoneNote: timeZoneText.en.timesShownIn,
+    bookingPolicyTitle: "Booking / cancellation policy",
+  },
+  es: {
+    successTitle: "Casi listo. Confirma tu email.",
+    successText:
+      "Enviamos un enlace de confirmación a tu email. Tu cita no queda confirmada hasta que hagas clic en ese enlace. Revisa tu bandeja de entrada y spam.",
+    timeZoneNote: timeZoneText.es.timesShownIn,
+    bookingPolicyTitle: "Política de reserva / cancelación",
+  },
+  ru: {
+    successTitle: "Почти готово. Подтвердите email.",
+    successText:
+      "Мы отправили ссылку подтверждения на ваш email. Запись не будет подтверждена, пока вы не нажмёте на эту ссылку. Проверьте папку «Входящие» и «Спам».",
+    timeZoneNote: timeZoneText.ru.timesShownIn,
+    bookingPolicyTitle: "Правила записи / отмены",
+  },
+} satisfies Record<Locale, Record<string, string>>;
+
+export function BookingForm({
+  masterSlug,
+  services,
+  bookingWindowDays,
+  masterTimeZone,
+  customBookingMessage,
+  bookingPolicyText,
+  themeClasses,
+}: BookingFormProps) {
+  const { locale, t } = useLocale();
+  const confirmationText = bookingConfirmationText[locale];
+
   const [serviceName, setServiceName] = useState(services[0]?.name ?? "");
   const [appointmentDate, setAppointmentDate] = useState("");
   const [appointmentTime, setAppointmentTime] = useState("");
@@ -20,6 +77,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
+  const [clientNote, setClientNote] = useState("");
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -30,7 +88,15 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
 
   const [errorText, setErrorText] = useState("");
 
-  const minDate = useMemo(() => getTodayDateString(), []);
+  const minDate = useMemo(
+    () => getDateStringInTimeZone(new Date(), masterTimeZone),
+    [masterTimeZone]
+  );
+
+  const maxDate = useMemo(
+    () => addDaysToDateString(minDate, Math.max(1, bookingWindowDays)),
+    [minDate, bookingWindowDays]
+  );
 
   useEffect(() => {
     setAppointmentTime("");
@@ -90,19 +156,25 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
 
     if (clientEmail.trim().toLowerCase() !== confirmEmail.trim().toLowerCase()) {
       setStatus("error");
-      setErrorText("Emails do not match.");
+      setErrorText(t.emailsDoNotMatch);
       return;
     }
 
     if (!appointmentTime) {
       setStatus("error");
-      setErrorText("Please select an available time slot.");
+      setErrorText(t.selectAvailableTimeSlot);
+      return;
+    }
+
+    if (clientNote.trim().length > 400) {
+      setStatus("error");
+      setErrorText(t.clientNoteTooLong);
       return;
     }
 
     if (!turnstileToken) {
       setStatus("error");
-      setErrorText("Please complete the security check.");
+      setErrorText(t.completeSecurityCheck);
       return;
     }
 
@@ -119,6 +191,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
         clientName,
         clientPhone,
         clientEmail,
+        clientNote,
         turnstileToken,
       }),
     });
@@ -127,7 +200,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
 
     if (!response.ok) {
       setStatus("error");
-      setErrorText(data?.error || "Booking request failed.");
+      setErrorText(data?.error || t.bookingFailed);
       setTurnstileToken("");
       return;
     }
@@ -139,6 +212,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
     setClientPhone("");
     setClientEmail("");
     setConfirmEmail("");
+    setClientNote("");
     setAvailableSlots([]);
     setTurnstileToken("");
 
@@ -148,33 +222,64 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
   }
 
   const slotsPlaceholder = !appointmentDate
-    ? "Select a date first"
+    ? t.selectDateFirst
     : slotsLoading
-      ? "Loading available slots..."
+      ? t.loadingAvailableSlots
       : availableSlots.length === 0
-        ? "No available slots"
-        : "Select a time slot";
+        ? t.noAvailableSlots
+        : t.selectTimeSlot;
+
+  const theme = themeClasses || {
+    border: "border-neutral-200",
+    heading: "text-neutral-900",
+    muted: "text-neutral-600",
+    button: "bg-neutral-900 text-white hover:bg-neutral-800",
+    focus: "focus:border-neutral-500",
+    infoBox: "border-neutral-200 bg-neutral-50 text-neutral-700",
+  };
+
+  const customMessage = customBookingMessage?.trim() || "";
+  const policyText = bookingPolicyText?.trim() || "";
 
   return (
-    <div className="rounded-3xl border border-neutral-200 p-6">
-      <h2 className="text-2xl font-semibold tracking-tight text-neutral-900">
-        Book an appointment
+    <div className={`rounded-3xl border p-6 ${theme.border}`}>
+      <h2 className={`text-2xl font-semibold tracking-tight ${theme.heading}`}>
+        {t.bookAppointment}
       </h2>
 
-      <p className="mt-3 text-sm leading-6 text-neutral-600">
-        Choose a service and leave your details to request a booking.
+      {customMessage && (
+        <div className={`mt-4 rounded-2xl border p-4 text-sm leading-6 ${theme.infoBox}`}>
+          <p className="whitespace-pre-line">{customMessage}</p>
+        </div>
+      )}
+
+      {policyText && (
+        <div className={`mt-3 rounded-2xl border p-4 text-sm leading-6 ${theme.infoBox}`}>
+          <p className={`font-semibold ${theme.heading}`}>
+            {confirmationText.bookingPolicyTitle}
+          </p>
+          <p className="mt-2 whitespace-pre-line">{policyText}</p>
+        </div>
+      )}
+
+      <p className={`mt-4 text-sm leading-6 ${theme.muted}`}>
+        {t.bookingFormSubtitle}
+      </p>
+
+      <p className="mt-2 text-sm leading-6 text-neutral-500">
+        {confirmationText.timeZoneNote}: {getTimeZoneLabel(masterTimeZone)}.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 space-y-5">
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-800">
-            Service
+            {t.service}
           </label>
 
           <select
             value={serviceName}
             onChange={(e) => setServiceName(e.target.value)}
-            className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+            className={`w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition ${theme.focus}`}
           >
             {services.map((service) => (
               <option key={service.id} value={service.name}>
@@ -186,22 +291,23 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
 
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-800">
-            Preferred date
+            {t.preferredDate}
           </label>
 
           <input
             type="date"
             required
             min={minDate}
+            max={maxDate}
             value={appointmentDate}
             onChange={(e) => setAppointmentDate(e.target.value)}
-            className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+            className={`w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition ${theme.focus}`}
           />
         </div>
 
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-800">
-            Available time slots
+            {t.availableTimeSlots}
           </label>
 
           <select
@@ -211,7 +317,7 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
             disabled={
               !appointmentDate || slotsLoading || availableSlots.length === 0
             }
-            className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500 disabled:cursor-not-allowed disabled:bg-neutral-100"
+            className={`w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition ${theme.focus} disabled:cursor-not-allowed disabled:bg-neutral-100`}
           >
             <option value="">{slotsPlaceholder}</option>
 
@@ -224,14 +330,14 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
 
           {appointmentDate && !slotsLoading && availableSlots.length === 0 && (
             <p className="mt-2 text-sm text-neutral-500">
-              No free slots are available for this date.
+              {t.noFreeSlotsForDate}
             </p>
           )}
         </div>
 
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-800">
-            Your name
+            {t.yourName}
           </label>
 
           <input
@@ -239,28 +345,28 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
             required
             value={clientName}
             onChange={(e) => setClientName(e.target.value)}
-            className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-            placeholder="Your name"
+            className={`w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition ${theme.focus}`}
+            placeholder={t.yourNamePlaceholder}
           />
         </div>
 
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-800">
-            Phone
+            {t.phone}
           </label>
 
           <input
             type="tel"
             value={clientPhone}
             onChange={(e) => setClientPhone(e.target.value)}
-            className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+            className={`w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition ${theme.focus}`}
             placeholder="+1 (___) ___-____"
           />
         </div>
 
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-800">
-            Email
+            {t.email}
           </label>
 
           <input
@@ -268,14 +374,14 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
             required
             value={clientEmail}
             onChange={(e) => setClientEmail(e.target.value)}
-            className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+            className={`w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition ${theme.focus}`}
             placeholder="your@email.com"
           />
         </div>
 
         <div>
           <label className="mb-2 block text-sm font-medium text-neutral-800">
-            Confirm email
+            {t.confirmEmail}
           </label>
 
           <input
@@ -283,15 +389,38 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
             required
             value={confirmEmail}
             onChange={(e) => setConfirmEmail(e.target.value)}
-            className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-            placeholder="Repeat your email"
+            className={`w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition ${theme.focus}`}
+            placeholder={t.confirmEmailPlaceholder}
           />
+        </div>
+
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-4">
+            <label className="block text-sm font-medium text-neutral-800">
+              {t.clientNote}
+            </label>
+
+            <span className="text-xs text-neutral-500">
+              {clientNote.length}/400
+            </span>
+          </div>
+
+          <textarea
+            value={clientNote}
+            onChange={(e) => setClientNote(e.target.value.slice(0, 400))}
+            rows={4}
+            maxLength={400}
+            className={`w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition ${theme.focus}`}
+            placeholder={t.clientNotePlaceholder}
+          />
+
+          <p className="mt-2 text-sm text-neutral-500">{t.clientNoteHelp}</p>
         </div>
 
         {turnstileSiteKey ? (
           <div className="rounded-2xl border border-neutral-200 p-4">
             <p className="mb-3 text-sm font-medium text-neutral-800">
-              Security check
+              {t.securityCheck}
             </p>
 
             <TurnstileWidget
@@ -303,23 +432,23 @@ export function BookingForm({ masterSlug, services }: BookingFormProps) {
           </div>
         ) : (
           <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-            Turnstile site key is missing. Booking security check is not
-            visible.
+            {t.missingBookingTurnstileSiteKey}
           </div>
         )}
 
         <button
           type="submit"
           disabled={status === "loading"}
-          className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
+          className={`w-full rounded-full px-6 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${theme.button}`}
         >
-          {status === "loading" ? "Sending..." : "Request booking"}
+          {status === "loading" ? t.bookingSending : t.requestBooking}
         </button>
 
         {status === "success" && (
-          <p className="text-sm font-medium text-green-700">
-            Your booking request has been sent successfully.
-          </p>
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+            <p className="font-semibold">{confirmationText.successTitle}</p>
+            <p className="mt-2">{confirmationText.successText}</p>
+          </div>
         )}
 
         {status === "error" && (

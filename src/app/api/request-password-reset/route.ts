@@ -1,28 +1,63 @@
 import { NextResponse } from "next/server";
+import { createHash } from "crypto";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { sendPasswordResetEmail } from "@/lib/email";
+import { getClientIp } from "@/lib/turnstile";
+import {
+  checkRateLimit,
+  cleanupOldRateLimitRows,
+  normalizeRateLimitValue,
+} from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
+function hashPasswordResetToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
 export async function POST(request: Request) {
+  const genericRedirect = new URL("/forgot-password?sent=1", request.url);
+
   try {
     const formData = await request.formData();
+
     const email = String(formData.get("email") || "")
       .trim()
       .toLowerCase();
 
+    const clientIp = getClientIp(request) || "unknown-ip";
+
     const siteUrl =
       process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
 
-    // Always return success message to avoid revealing whether an email exists.
-    const genericRedirect = new URL(
-      "/forgot-password?sent=1",
-      request.url
-    );
-
+    // Always return the same success message to avoid revealing whether an email exists.
     if (!email) {
       return NextResponse.redirect(genericRedirect, { status: 303 });
     }
+
+    const ipRateLimit = await checkRateLimit({
+      key: `password-reset:ip:${normalizeRateLimitValue(clientIp)}`,
+      limit: 3,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!ipRateLimit.allowed) {
+      return NextResponse.redirect(genericRedirect, { status: 303 });
+    }
+
+    const emailRateLimit = await checkRateLimit({
+      key: `password-reset:email:${normalizeRateLimitValue(email)}`,
+      limit: 3,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!emailRateLimit.allowed) {
+      return NextResponse.redirect(genericRedirect, { status: 303 });
+    }
+
+    cleanupOldRateLimitRows().catch((error) => {
+      console.error("request-password-reset rate limit cleanup failed:", error);
+    });
 
     const { data: account, error: accountError } = await supabaseAdmin
       .from("master_accounts")
@@ -40,12 +75,13 @@ export async function POST(request: Request) {
     }
 
     const resetToken = crypto.randomUUID();
+    const resetTokenHash = hashPasswordResetToken(resetToken);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
     const { error: updateError } = await supabaseAdmin
       .from("master_accounts")
       .update({
-        password_reset_token: resetToken,
+        password_reset_token: resetTokenHash,
         password_reset_expires_at: expiresAt,
       })
       .eq("email", email);
@@ -66,9 +102,6 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("request-password-reset error:", error);
 
-    return NextResponse.redirect(
-      new URL("/forgot-password?sent=1", request.url),
-      { status: 303 }
-    );
+    return NextResponse.redirect(genericRedirect, { status: 303 });
   }
 }

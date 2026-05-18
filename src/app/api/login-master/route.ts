@@ -2,6 +2,12 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { getClientIp, verifyTurnstileToken } from "@/lib/turnstile";
+import {
+  checkRateLimit,
+  cleanupOldRateLimitRows,
+  normalizeRateLimitValue,
+} from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -38,10 +44,55 @@ export async function POST(request: Request) {
       .toLowerCase();
 
     const password = String(formData.get("password") || "");
+    const turnstileToken = String(formData.get("turnstileToken") || "");
+
+    const clientIp = getClientIp(request) || "unknown-ip";
 
     if (!email || !password) {
       return NextResponse.redirect(
         new URL("/login?error=missing-fields", request.url),
+        { status: 303 }
+      );
+    }
+
+    const ipRateLimit = await checkRateLimit({
+      key: `login:ip:${normalizeRateLimitValue(clientIp)}`,
+      limit: 5,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!ipRateLimit.allowed) {
+      return NextResponse.redirect(
+        new URL("/login?error=too-many-attempts", request.url),
+        { status: 303 }
+      );
+    }
+
+    const emailRateLimit = await checkRateLimit({
+      key: `login:email:${normalizeRateLimitValue(email)}`,
+      limit: 5,
+      windowSeconds: 60 * 60,
+    });
+
+    if (!emailRateLimit.allowed) {
+      return NextResponse.redirect(
+        new URL("/login?error=too-many-attempts", request.url),
+        { status: 303 }
+      );
+    }
+
+    cleanupOldRateLimitRows().catch((error) => {
+      console.error("login-master rate limit cleanup failed:", error);
+    });
+
+    const turnstilePassed = await verifyTurnstileToken({
+      token: turnstileToken,
+      remoteIp: clientIp,
+    });
+
+    if (!turnstilePassed) {
+      return NextResponse.redirect(
+        new URL("/login?error=security-check-failed", request.url),
         { status: 303 }
       );
     }

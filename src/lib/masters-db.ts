@@ -1,5 +1,6 @@
 import type { MasterProfile } from "@/types/master";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { normalizeTimeZone } from "@/lib/timezones";
 
 type MasterRow = {
   slug: string;
@@ -8,11 +9,25 @@ type MasterRow = {
   phone: string | null;
   whatsapp: string | null;
   address: string | null;
+  country: string | null;
   city: string | null;
+  timezone: string | null;
   neighborhood: string | null;
   photo_url: string | null;
   booking_email: string | null;
-  slot_step_minutes: number;
+  page_theme: string | null;
+  custom_booking_message: string | null;
+  booking_policy_text: string | null;
+  show_in_directory: boolean | null;
+
+  instagram_url: string | null;
+  telegram_url: string | null;
+  facebook_url: string | null;
+  tiktok_url: string | null;
+  vk_url: string | null;
+
+  slot_step_minutes: number | null;
+  booking_window_days: number | null;
 };
 
 type ServiceRow = {
@@ -34,13 +49,45 @@ function formatPrice(price: string) {
   return trimmed.startsWith("$") ? trimmed : `$${trimmed}`;
 }
 
+function normalizeBookingWindowDays(value: number | null | undefined) {
+  if (value === 14 || value === 21 || value === 30 || value === 60 || value === 90) {
+    return value;
+  }
+
+  return 30;
+}
+
 export async function getMasterFromDb(
   slug: string
 ): Promise<MasterProfile | null> {
   const { data: master, error: masterError } = await supabaseAdmin
     .from("masters")
     .select(
-      "slug, name, about, phone, whatsapp, address, city, neighborhood, photo_url, booking_email, slot_step_minutes"
+      `
+      slug,
+      name,
+      about,
+      phone,
+      whatsapp,
+      address,
+      country,
+      city,
+      timezone,
+      neighborhood,
+      photo_url,
+      booking_email,
+      page_theme,
+      custom_booking_message,
+      booking_policy_text,
+      show_in_directory,
+      instagram_url,
+      telegram_url,
+      facebook_url,
+      tiktok_url,
+      vk_url,
+      slot_step_minutes,
+      booking_window_days
+      `
     )
     .eq("slug", slug)
     .single();
@@ -84,17 +131,33 @@ export async function getMasterFromDb(
     phone: masterRow.phone,
     whatsapp: masterRow.whatsapp,
     address: masterRow.address,
+    country: masterRow.country,
     city: masterRow.city,
+    timeZone: normalizeTimeZone(masterRow.timezone),
     neighborhood: masterRow.neighborhood,
     photoUrl: masterRow.photo_url,
     bookingEmail: masterRow.booking_email,
+    pageTheme: masterRow.page_theme || "classic",
+    customBookingMessage: masterRow.custom_booking_message,
+    bookingPolicyText: masterRow.booking_policy_text,
+    showInDirectory: masterRow.show_in_directory !== false,
+
+    instagramUrl: masterRow.instagram_url,
+    telegramUrl: masterRow.telegram_url,
+    facebookUrl: masterRow.facebook_url,
+    tiktokUrl: masterRow.tiktok_url,
+    vkUrl: masterRow.vk_url,
+
     publicCategories: categories,
-    slotStepMinutes: masterRow.slot_step_minutes,
+    slotStepMinutes: masterRow.slot_step_minutes || 30,
+    bookingWindowDays: normalizeBookingWindowDays(masterRow.booking_window_days),
+
     workingDays: workingDayRows.map((day) => ({
       dayOfWeek: day.day_of_week,
       start: day.start_time,
       end: day.end_time,
     })),
+
     services: serviceRows.map((service) => ({
       id: service.id,
       name: service.name,

@@ -5,10 +5,42 @@ import Link from "next/link";
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { TurnstileWidget } from "@/components/turnstile-widget";
+import { useLocale } from "@/components/locale-provider";
+import {
+  getServiceCategoryLabel,
+  serviceCategories,
+} from "@/lib/service-categories";
+import {
+  defaultTimeZone,
+  getTimeZoneLabel,
+  masterTimeZones,
+  timeZoneText,
+} from "@/lib/timezones";
 
 const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || "";
 
+const signupExtraText = {
+  en: {
+    country: "Country",
+    countryPlaceholder: "United States",
+    timeZoneHelp: timeZoneText.en.timeZoneHelp,
+  },
+  es: {
+    country: "País",
+    countryPlaceholder: "Estados Unidos",
+    timeZoneHelp: timeZoneText.es.timeZoneHelp,
+  },
+  ru: {
+    country: "Страна",
+    countryPlaceholder: "США",
+    timeZoneHelp: timeZoneText.ru.timeZoneHelp,
+  },
+};
+
 export default function SignupPage() {
+  const { locale, t } = useLocale();
+  const extraText = signupExtraText[locale];
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -16,7 +48,9 @@ export default function SignupPage() {
   const [name, setName] = useState("");
   const [bookingEmail, setBookingEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
+  const [timeZone, setTimeZone] = useState(defaultTimeZone);
   const [neighborhood, setNeighborhood] = useState("");
   const [about, setAbout] = useState("");
 
@@ -27,9 +61,9 @@ export default function SignupPage() {
 
   const [turnstileToken, setTurnstileToken] = useState("");
 
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">(
-    "idle"
-  );
+  const [status, setStatus] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
 
   const [errorText, setErrorText] = useState("");
   const [createdSlug, setCreatedSlug] = useState("");
@@ -43,7 +77,7 @@ export default function SignupPage() {
 
     if (!turnstileToken) {
       setStatus("error");
-      setErrorText("Please complete the security check.");
+      setErrorText(t.completeSecurityCheck);
       return;
     }
 
@@ -60,7 +94,9 @@ export default function SignupPage() {
           name,
           bookingEmail,
           phone,
+          country,
           city,
+          timeZone,
           neighborhood,
           about,
           serviceName,
@@ -75,7 +111,7 @@ export default function SignupPage() {
 
       if (!response.ok || !data?.success) {
         setStatus("error");
-        setErrorText(data?.error || "Signup failed.");
+        setErrorText(data?.error || t.signupFailed);
         return;
       }
 
@@ -83,7 +119,7 @@ export default function SignupPage() {
       setCreatedSlug(data.slug);
     } catch {
       setStatus("error");
-      setErrorText("Signup request failed. Please try again.");
+      setErrorText(t.signupRequestFailed);
     }
   }
 
@@ -94,37 +130,34 @@ export default function SignupPage() {
       <main className="flex-1">
         <section className="mx-auto max-w-3xl px-6 py-16">
           <h1 className="text-4xl font-bold tracking-tight text-neutral-900">
-            Create your master page
+            {t.signupTitle}
           </h1>
 
           <p className="mt-4 text-lg leading-8 text-neutral-600">
-            Create a booking page for your services.
+            {t.signupSubtitle}
           </p>
 
           {status === "success" && createdSlug ? (
             <div className="mt-10 rounded-3xl border border-green-200 bg-green-50 p-6">
               <h2 className="text-2xl font-semibold text-green-800">
-                Your page was created
+                {t.signupSuccessTitle}
               </h2>
 
-              <p className="mt-3 text-green-700">
-                A welcome email was sent to your login email. Please log in to
-                manage your dashboard and activate your Basic trial.
-              </p>
+              <p className="mt-3 text-green-700">{t.signupSuccessText}</p>
 
               <div className="mt-6 flex flex-wrap gap-3">
                 <Link
                   href="/login"
                   className="rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800"
                 >
-                  Log in to dashboard
+                  {t.logInToDashboard}
                 </Link>
 
                 <Link
                   href={`/${createdSlug}`}
                   className="rounded-full border border-green-300 px-6 py-3 text-sm font-semibold text-green-800 transition hover:bg-green-100"
                 >
-                  Open public page
+                  {t.openPublicPage}
                 </Link>
               </div>
             </div>
@@ -135,13 +168,13 @@ export default function SignupPage() {
             >
               <div className="rounded-2xl bg-neutral-50 p-4">
                 <h2 className="text-lg font-semibold text-neutral-900">
-                  Account
+                  {t.accountSection}
                 </h2>
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  Login email
+                  {t.loginEmail}
                 </label>
 
                 <input
@@ -162,7 +195,7 @@ export default function SignupPage() {
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  Password
+                  {t.passwordLabel}
                 </label>
 
                 <input
@@ -172,19 +205,19 @@ export default function SignupPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                  placeholder="At least 6 characters"
+                  placeholder={t.passwordMinPlaceholder}
                 />
               </div>
 
               <div className="rounded-2xl bg-neutral-50 p-4">
                 <h2 className="text-lg font-semibold text-neutral-900">
-                  Public page
+                  {t.publicPageSection}
                 </h2>
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  Page slug
+                  {t.pageSlug}
                 </label>
 
                 <input
@@ -197,13 +230,13 @@ export default function SignupPage() {
                 />
 
                 <p className="mt-2 text-sm text-neutral-500">
-                  Your public link will be: appointly.vip/your-slug
+                  {t.publicLinkHint}
                 </p>
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  Display name
+                  {t.displayName}
                 </label>
 
                 <input
@@ -218,7 +251,7 @@ export default function SignupPage() {
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  Email for booking notifications
+                  {t.bookingEmailLabel}
                 </label>
 
                 <input
@@ -227,13 +260,13 @@ export default function SignupPage() {
                   value={bookingEmail}
                   onChange={(e) => setBookingEmail(e.target.value)}
                   className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                  placeholder="where booking emails should arrive"
+                  placeholder={t.bookingEmailPlaceholder}
                 />
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  Phone
+                  {t.formPhone}
                 </label>
 
                 <input
@@ -241,14 +274,50 @@ export default function SignupPage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                  placeholder="+1..."
+                  placeholder={t.phonePlaceholder}
                 />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-neutral-800">
+                  {extraText.country}
+                </label>
+
+                <input
+                  type="text"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+                  placeholder={extraText.countryPlaceholder}
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-neutral-800">
+                  {timeZoneText[locale].timeZone}
+                </label>
+
+                <select
+                  value={timeZone}
+                  onChange={(e) => setTimeZone(e.target.value)}
+                  className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
+                >
+                  {masterTimeZones.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {getTimeZoneLabel(item.value)}
+                    </option>
+                  ))}
+                </select>
+
+                <p className="mt-2 text-sm text-neutral-500">
+                  {extraText.timeZoneHelp}
+                </p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-neutral-800">
-                    City
+                    {t.city}
                   </label>
 
                   <input
@@ -256,13 +325,13 @@ export default function SignupPage() {
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                    placeholder="Brooklyn"
+                    placeholder={t.cityPlaceholder}
                   />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-neutral-800">
-                    Neighborhood
+                    {t.neighborhood}
                   </label>
 
                   <input
@@ -270,14 +339,14 @@ export default function SignupPage() {
                     value={neighborhood}
                     onChange={(e) => setNeighborhood(e.target.value)}
                     className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                    placeholder="Brighton Beach"
+                    placeholder={t.neighborhoodPlaceholder}
                   />
                 </div>
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  About
+                  {t.about}
                 </label>
 
                 <textarea
@@ -285,19 +354,19 @@ export default function SignupPage() {
                   value={about}
                   onChange={(e) => setAbout(e.target.value)}
                   className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                  placeholder="Short description about your services"
+                  placeholder={t.aboutPlaceholder}
                 />
               </div>
 
               <div className="rounded-2xl bg-neutral-50 p-4">
                 <h2 className="text-lg font-semibold text-neutral-900">
-                  First service
+                  {t.firstService}
                 </h2>
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-medium text-neutral-800">
-                  Service name
+                  {t.serviceName}
                 </label>
 
                 <input
@@ -306,14 +375,14 @@ export default function SignupPage() {
                   value={serviceName}
                   onChange={(e) => setServiceName(e.target.value)}
                   className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
-                  placeholder="Classic Manicure"
+                  placeholder={t.serviceNamePlaceholder}
                 />
               </div>
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-neutral-800">
-                    Price
+                    {t.price}
                   </label>
 
                   <input
@@ -328,7 +397,7 @@ export default function SignupPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-neutral-800">
-                    Duration, minutes
+                    {t.durationMinutes}
                   </label>
 
                   <input
@@ -346,7 +415,7 @@ export default function SignupPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-neutral-800">
-                    Category
+                    {t.category}
                   </label>
 
                   <select
@@ -354,16 +423,11 @@ export default function SignupPage() {
                     onChange={(e) => setServiceCategory(e.target.value)}
                     className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none transition focus:border-neutral-500"
                   >
-                    <option value="manicure">Manicure</option>
-                    <option value="pedicure">Pedicure</option>
-                    <option value="lashes">Lashes</option>
-                    <option value="brows">Brows</option>
-                    <option value="haircut">Haircut</option>
-                    <option value="hair coloring">Hair coloring</option>
-                    <option value="massage">Massage</option>
-                    <option value="skincare">Skincare</option>
-                    <option value="makeup">Makeup</option>
-                    <option value="waxing">Waxing</option>
+                    {serviceCategories.map((category) => (
+                      <option key={category.value} value={category.value}>
+                        {getServiceCategoryLabel(category.value, locale)}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -371,7 +435,7 @@ export default function SignupPage() {
               {turnstileSiteKey ? (
                 <div className="rounded-2xl border border-neutral-200 p-4">
                   <p className="mb-3 text-sm font-medium text-neutral-800">
-                    Security check
+                    {t.securityCheck}
                   </p>
 
                   <TurnstileWidget
@@ -383,8 +447,7 @@ export default function SignupPage() {
                 </div>
               ) : (
                 <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-                  Turnstile site key is missing. Signup security check is not
-                  visible.
+                  {t.missingTurnstileSiteKey}
                 </div>
               )}
 
@@ -393,7 +456,7 @@ export default function SignupPage() {
                 disabled={status === "loading"}
                 className="w-full rounded-full bg-neutral-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {status === "loading" ? "Creating..." : "Create booking page"}
+                {status === "loading" ? t.creating : t.createBookingPage}
               </button>
 
               {status === "error" && (

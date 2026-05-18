@@ -4,7 +4,7 @@ import { LocaleProvider } from "@/components/locale-provider";
 
 export const metadata: Metadata = {
   title: "Appointly",
-  description: "Simple booking system for beauty masters",
+  description: "Simple booking system for beauty masters.",
 };
 
 export default function RootLayout({
@@ -14,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-white text-neutral-900 antialiased">
+      <body>
         <LocaleProvider>{children}</LocaleProvider>
       </body>
     </html>

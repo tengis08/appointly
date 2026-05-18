@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { sendBookingEmails } from "@/lib/email";
+import { sendBookingConfirmationEmail } from "@/lib/email";
 import { canAcceptBookings } from "@/lib/subscription";
 import { getClientIp, verifyTurnstileToken } from "@/lib/turnstile";
 import {
@@ -8,8 +8,16 @@ import {
   cleanupOldRateLimitRows,
   normalizeRateLimitValue,
 } from "@/lib/rate-limit";
+import {
+  addDaysToDateString,
+  getCurrentMinutesInTimeZone,
+  getDateStringInTimeZone,
+  normalizeTimeZone,
+} from "@/lib/timezones";
 
 export const dynamic = "force-dynamic";
+
+const CONFIRMATION_EXPIRES_MINUTES = 60;
 
 type BookingPayload = {
   masterSlug?: string;
@@ -26,6 +34,8 @@ type BookingPayload = {
   client_phone?: string;
   clientEmail?: string;
   client_email?: string;
+  clientNote?: string;
+  client_note?: string;
   turnstileToken?: string;
   turnstile_token?: string;
   "cf-turnstile-response"?: string;
@@ -71,6 +81,28 @@ function timeToMinutes(time: string) {
   return hours * 60 + minutes;
 }
 
+function parseServicePrice(price: string | number | null | undefined) {
+  if (typeof price === "number" && Number.isFinite(price)) {
+    return Math.round(price * 100) / 100;
+  }
+
+  if (!price) {
+    return null;
+  }
+
+  const normalized = String(price)
+    .replace(/[^0-9.,-]/g, "")
+    .replace(",", ".");
+
+  const value = Number(normalized);
+
+  if (!Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  return Math.round(value * 100) / 100;
+}
+
 function getDurationFromService(duration: string | number | null | undefined) {
   if (typeof duration === "number" && !Number.isNaN(duration)) {
     return duration;
@@ -80,6 +112,36 @@ function getDurationFromService(duration: string | number | null | undefined) {
 
   const match = String(duration).match(/\d+/);
   return match ? Number(match[0]) : 60;
+}
+
+function normalizeBookingWindowDays(value: number | null | undefined) {
+  if (value === 14 || value === 21 || value === 30 || value === 60 || value === 90) {
+    return value;
+  }
+
+  return 30;
+}
+
+function isDateInsideBookingWindow(
+  dateString: string,
+  bookingWindowDays: number,
+  timeZone: string
+) {
+  const today = getDateStringInTimeZone(new Date(), timeZone);
+  const maxDate = addDaysToDateString(today, bookingWindowDays);
+
+  return dateString >= today && dateString <= maxDate;
+}
+
+function appointmentBlocksSlot(status: string | null, confirmExpiresAt?: string | null) {
+  if (status === "active") return true;
+
+  if (status === "pending_confirmation") {
+    if (!confirmExpiresAt) return false;
+    return new Date(confirmExpiresAt).getTime() > Date.now();
+  }
+
+  return false;
 }
 
 async function readBookingPayload(request: Request): Promise<BookingPayload> {
@@ -110,6 +172,8 @@ async function readBookingPayload(request: Request): Promise<BookingPayload> {
 }
 
 export async function POST(request: Request) {
+  let insertedCancelToken: string | null = null;
+
   try {
     const body = await readBookingPayload(request);
 
@@ -132,6 +196,11 @@ export async function POST(request: Request) {
     const clientEmail = getString(
       body.clientEmail || body.client_email
     ).toLowerCase();
+
+    const clientNote = getString(body.clientNote || body.client_note).slice(
+      0,
+      400
+    );
 
     if (
       !masterSlug ||
@@ -214,7 +283,7 @@ export async function POST(request: Request) {
 
     const { data: master, error: masterError } = await supabaseAdmin
       .from("masters")
-      .select("slug, name, booking_email")
+      .select("slug, name, booking_email, booking_window_days, timezone, booking_policy_text")
       .eq("slug", masterSlug)
       .single();
 
@@ -222,6 +291,50 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Master not found." },
         { status: 404 }
+      );
+    }
+
+    const masterTimeZone = normalizeTimeZone(master.timezone);
+    const bookingWindowDays = normalizeBookingWindowDays(
+      master.booking_window_days
+    );
+
+    if (!isDateInsideBookingWindow(appointmentDate, bookingWindowDays, masterTimeZone)) {
+      return NextResponse.json(
+        {
+          error: "This date is outside the master's current booking window.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const todayInMasterTimeZone = getDateStringInTimeZone(new Date(), masterTimeZone);
+    const currentMinutesInMasterTimeZone = getCurrentMinutesInTimeZone(masterTimeZone);
+
+    if (
+      appointmentDate === todayInMasterTimeZone &&
+      newStart <= currentMinutesInMasterTimeZone
+    ) {
+      return NextResponse.json(
+        { error: "This time slot is no longer available." },
+        { status: 400 }
+      );
+    }
+
+    const { data: blockedDate } = await supabaseAdmin
+      .from("master_blocked_dates")
+      .select("blocked_date")
+      .eq("master_slug", masterSlug)
+      .eq("blocked_date", appointmentDate)
+      .maybeSingle();
+
+    if (blockedDate) {
+      return NextResponse.json(
+        {
+          error:
+            "This date is not available for booking. Please choose another date.",
+        },
+        { status: 400 }
       );
     }
 
@@ -257,7 +370,7 @@ export async function POST(request: Request) {
 
     const { data: service, error: serviceError } = await supabaseAdmin
       .from("master_services")
-      .select("name, duration_minutes")
+      .select("name, price, duration_minutes")
       .eq("master_slug", masterSlug)
       .eq("name", serviceName)
       .single();
@@ -270,15 +383,15 @@ export async function POST(request: Request) {
     }
 
     const newDuration = getDurationFromService(service.duration_minutes);
+    const servicePriceAtBooking = parseServicePrice(service.price);
     const newEnd = newStart + newDuration;
 
     const { data: existingAppointments, error: existingError } =
       await supabaseAdmin
         .from("appointments")
-        .select("appointment_time, service_name")
+        .select("appointment_time, service_name, status, confirm_expires_at")
         .eq("master_slug", masterSlug)
-        .eq("appointment_date", appointmentDate)
-        .neq("status", "cancelled");
+        .eq("appointment_date", appointmentDate);
 
     if (existingError) {
       console.error(
@@ -292,8 +405,12 @@ export async function POST(request: Request) {
       );
     }
 
+    const blockingAppointments = (existingAppointments || []).filter((item) =>
+      appointmentBlocksSlot(item.status, item.confirm_expires_at)
+    );
+
     const serviceNames = Array.from(
-      new Set((existingAppointments || []).map((item) => item.service_name))
+      new Set(blockingAppointments.map((item) => item.service_name))
     );
 
     let serviceDurations = new Map<string, number>();
@@ -301,7 +418,7 @@ export async function POST(request: Request) {
     if (serviceNames.length > 0) {
       const { data: durationRows, error: durationError } = await supabaseAdmin
         .from("master_services")
-        .select("name, duration_minutes")
+        .select("name, price, duration_minutes")
         .eq("master_slug", masterSlug)
         .in("name", serviceNames);
 
@@ -322,7 +439,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const hasConflict = (existingAppointments || []).some((appointment) => {
+    const hasConflict = blockingAppointments.some((appointment) => {
       const existingStart = timeToMinutes(appointment.appointment_time);
 
       if (existingStart === null) {
@@ -345,6 +462,12 @@ export async function POST(request: Request) {
     }
 
     const cancelToken = crypto.randomUUID();
+    const confirmToken = crypto.randomUUID();
+    const confirmExpiresAt = new Date(
+      Date.now() + CONFIRMATION_EXPIRES_MINUTES * 60 * 1000
+    ).toISOString();
+
+    insertedCancelToken = cancelToken;
 
     const { error: insertError } = await supabaseAdmin
       .from("appointments")
@@ -352,13 +475,17 @@ export async function POST(request: Request) {
         {
           master_slug: masterSlug,
           service_name: serviceName,
+          service_price_at_booking: servicePriceAtBooking,
           appointment_date: appointmentDate,
           appointment_time: appointmentTime,
           client_name: clientName,
           client_phone: clientPhone || null,
           client_email: clientEmail,
+          client_note: clientNote || null,
           cancel_token: cancelToken,
-          status: "active",
+          confirm_token: confirmToken,
+          confirm_expires_at: confirmExpiresAt,
+          status: "pending_confirmation",
         },
       ]);
 
@@ -375,26 +502,51 @@ export async function POST(request: Request) {
       process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
 
     const cancelUrl = `${siteUrl}/cancel/${cancelToken}`;
+    const confirmUrl = `${siteUrl}/confirm/${confirmToken}`;
 
     try {
-      await sendBookingEmails({
+      await sendBookingConfirmationEmail({
         masterName: master.name,
-        masterEmail: master.booking_email,
         clientName,
-        clientPhone: clientPhone || "-",
         clientEmail,
         serviceName,
+        clientNote: clientNote || null,
         appointmentDate,
         appointmentTime,
+        timeZone: masterTimeZone,
+        bookingPolicyText: master.booking_policy_text || null,
+        confirmUrl,
         cancelUrl,
       });
     } catch (emailError) {
-      console.error("book-appointment email error:", emailError);
+      console.error("book-appointment confirmation email error:", emailError);
+
+      await supabaseAdmin
+        .from("appointments")
+        .update({ status: "cancelled" })
+        .eq("cancel_token", cancelToken)
+        .eq("status", "pending_confirmation");
+
+      return NextResponse.json(
+        { error: "Could not send confirmation email. Please try again." },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      requiresConfirmation: true,
+    });
   } catch (error) {
     console.error("book-appointment unexpected error:", error);
+
+    if (insertedCancelToken) {
+      await supabaseAdmin
+        .from("appointments")
+        .update({ status: "cancelled" })
+        .eq("cancel_token", insertedCancelToken)
+        .eq("status", "pending_confirmation");
+    }
 
     return NextResponse.json(
       { error: "Unexpected server error." },
